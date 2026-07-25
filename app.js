@@ -620,6 +620,91 @@ const COLS = 12;
       return address ? Boolean(getDeviceValue(address)) : false;
     }
 
+    function simulationInputKind(question, item) {
+      if (selectorProfile(question, item)) return 'selector';
+      if (/^(PB|START|STOP|EMS|HOME|SAVE|JOG)/.test(item.id)) return 'momentary';
+      return 'switch';
+    }
+
+    function simulationSelectorGroup(question, item) {
+      if (!selectorProfile(question, item)) return null;
+      if ((question.id === 2 || question.id === 6) && /^COS[0-2]$/.test(item.id)) return 'COS_MAIN';
+      if (question.id === 3 && /^COS[12]_/.test(item.id)) return item.id.split('_')[0];
+      if (question.id === 4 && /^COS4_/.test(item.id)) return 'COS4';
+      if (question.id === 5 && /^COS[12]$/.test(item.id)) return 'COS_MODE';
+      return null;
+    }
+
+    function logSimulationInput(item, address, value, kind) {
+      const sim = ensurePracticeState().simulation;
+      const actionName = kind === 'momentary' ? '按下輸入按鈕' : kind === 'selector' ? '切換選擇開關' : '切換輸入接點';
+      sim.history.unshift({
+        time:new Date().toLocaleTimeString('zh-TW',{hour12:false}),
+        label:`${actionName} ${item.id}`,
+        detail:`${item.label} · ${address} = ${value ? 'ON' : 'OFF'} · 掃描 ${state.simulator.scanCount}`
+      });
+      sim.history = sim.history.slice(0,12);
+    }
+
+    function operateSimulationInput(componentId) {
+      const question = activeQuestion();
+      const item = question.inputs.find(candidate => candidate.id === componentId);
+      const mapping = ensurePracticeState(question.id).wiring;
+      const address = item ? mapping[item.id] : '';
+      if (!item || !isDeviceX(address || '')) return;
+      const kind = simulationInputKind(question, item);
+      if (kind === 'selector') {
+        const group = simulationSelectorGroup(question, item);
+        if (group) {
+          question.inputs.forEach(candidate => {
+            if (simulationSelectorGroup(question, candidate) !== group) return;
+            const candidateAddress = mapping[candidate.id];
+            if (isDeviceX(candidateAddress || '')) setDeviceValue(candidateAddress, candidate.id === item.id);
+          });
+        } else {
+          setDeviceValue(address, !getDeviceValue(address));
+        }
+        if (state.compile.passed) runOneScan();
+        logSimulationInput(item, address, getDeviceValue(address), kind);
+        persistPracticeState();
+        render();
+        return;
+      }
+      if (kind === 'momentary') {
+        setDeviceValue(address, true);
+        if (state.compile.passed) runOneScan();
+        logSimulationInput(item, address, true, kind);
+        persistPracticeState();
+        render();
+        setTimeout(() => {
+          setDeviceValue(address, false);
+          if (state.compile.passed && state.portalView === 'practice' && state.practiceStage === 'simulation') runOneScan();
+          if (state.portalView === 'practice' && state.practiceStage === 'simulation') render();
+        }, 220);
+        return;
+      }
+      const nextValue = !getDeviceValue(address);
+      setDeviceValue(address, nextValue);
+      if (state.compile.passed) runOneScan();
+      logSimulationInput(item, address, nextValue, kind);
+      persistPracticeState();
+      render();
+    }
+
+    function simulationInputPanelMarkup(question) {
+      const mapping = ensurePracticeState(question.id).wiring;
+      const controls = question.inputs.map(item => {
+        const address = mapping[item.id] || '';
+        const on = isDeviceX(address) && getDeviceValue(address);
+        const kind = simulationInputKind(question, item);
+        const selector = selectorProfile(question, item);
+        const contactType = inputContactType(question, item);
+        const typeLabel = selector ? `${selector.positions} 段 COS` : kind === 'momentary' ? `瞬時按鈕 · ${contactType}` : `${contactType === 'NC' ? '常閉' : '常開'}接點`;
+        return `<button class="sim-input-control ${kind} ${on ? 'on' : ''}" data-sim-input-id="${item.id}" ${address ? '' : 'disabled'} aria-pressed="${on}" title="${item.label}｜${address || '未配線'}"><span class="sim-control-visual ${kind}"><i></i></span><span class="sim-input-copy"><strong>${item.id}</strong><small>${item.label}</small><em>${typeLabel}</em></span><span class="sim-input-state"><b>${address || '--'}</b><small>${on ? 'ON' : 'OFF'}</small></span></button>`;
+      }).join('');
+      return `<section class="virtual-input-panel"><div class="virtual-input-heading"><div><span>VIRTUAL INPUT PANEL</span><h3>本題輸入按鈕、開關與感測接點</h3></div><small>操作後會寫入使用者配線的 X 位址並立即掃描</small></div><div class="sim-input-grid">${controls}</div></section>`;
+    }
+
     function applySimulationInputs(question, sim, action) {
       const mapping = ensurePracticeState(question.id).wiring;
       const writeBit = (id,value) => { const address = mapping[id]; if (address) setDeviceValue(address,value); };
@@ -2990,6 +3075,7 @@ const COLS = 12;
         <div class="stage-heading"><div><h2>虛擬 PLC 與機台動作</h2><p>編譯成功後寫入虛擬 PLC；按鈕會改變感測情境並執行一次掃描。</p></div><span class="stage-badge">${state.compile.passed ? 'PROGRAM LOADED' : 'PROGRAM NOT LOADED'}</span></div>
         <div class="machine-stage">
           <div class="machine-toolbar"><button class="primary" data-action="download-plc">重新寫入虛擬 PLC</button><button data-action="sim-start">啟動／RUN</button><button data-action="sim-stop">停止／STOP</button>${extraControls}<button data-action="sim-alarm">異常／復歸</button><button data-action="scan-once">執行單次掃描</button></div>
+          ${simulationInputPanelMarkup(q)}
           <div class="machine-scene"><div class="machine-visual"><div class="machine-titlebar"><span>${q.code} / ${q.title}</span><span>${sim.running ? 'RUN' : 'STOP'} · ${state.simulator.scanTimeMs}ms</span></div><div class="machine-body">${machineBodyMarkup(q,sim)}</div></div></div>
           <div class="simulation-details">
             <section class="operation-guide"><div class="section-kicker">OPERATION PROCEDURE</div><h3>建議操作流程</h3><ol>${procedures.map((item,index) => `<li><span>${index + 1}</span><p>${item}</p></li>`).join('')}</ol></section>
@@ -3411,6 +3497,7 @@ const COLS = 12;
       const stageTarget = event.target.closest('[data-stage]');
       const wiringTarget = event.target.closest('.terminal, .plc-terminal');
       const deviceToggleTarget = event.target.closest('[data-device-toggle]');
+      const simulationInputTarget = event.target.closest('[data-sim-input-id]');
 
       if (actionTarget) {
         const action = actionTarget.dataset.action;
@@ -3439,6 +3526,7 @@ const COLS = 12;
       if (questionTarget) { switchQuestion(questionTarget.dataset.questionId); return; }
       if (stageTarget) { setPracticeStage(stageTarget.dataset.stage); return; }
       if (wiringTarget) { handleWiringTerminal(wiringTarget); return; }
+      if (simulationInputTarget) { operateSimulationInput(simulationInputTarget.dataset.simInputId); return; }
       if (deviceToggleTarget?.dataset.deviceToggle) {
         const device = deviceToggleTarget.dataset.deviceToggle;
         if (isDeviceX(device)) { setDeviceValue(device, !getDeviceValue(device)); if (state.compile.passed) runOneScan(); render(); }
