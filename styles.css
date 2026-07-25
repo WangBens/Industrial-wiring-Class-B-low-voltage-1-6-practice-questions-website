@@ -165,7 +165,7 @@
     .fixed-terminal,.plc-external-panel .plc-terminal { position:relative; flex:1 1 38px; min-width:36px; width:auto; height:62px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:1px; overflow:visible; border:0; border-right:1px solid #aeb9c1; border-top:0; padding:3px 1px; background:#fff; color:#172d3c; cursor:pointer; font:700 9px/1.1 Consolas,monospace; }
     .fixed-terminal { cursor:default; }
     .screw-head { display:grid; place-items:center; width:30px; height:30px; flex:none; border:2px solid #3c4c56; border-radius:50%; background:radial-gradient(circle,#fff 0 48%,#e3e7e9 49% 100%); color:#3b4850; font:400 26px/1 Arial,sans-serif; }
-    .fixed-terminal b,.plc-address { margin-top:2px; font:700 9px/1 Consolas,monospace; }
+    .fixed-terminal b,.plc-address { margin-top:3px; font:800 13px/1 Consolas,monospace; letter-spacing:.01em; }
     .plc-external-panel .plc-led { position:absolute; right:3px; top:3px; width:6px; height:6px; }
     .plc-external-panel .plc-terminal:hover,.plc-external-panel .plc-terminal.pending { background:#eaf9f6; color:#075e57; }
     .plc-external-panel .plc-terminal.used { background:#edf8ff; color:#146ca0; }
@@ -178,10 +178,10 @@
     .plc-panel-center { position:absolute; inset:96px 130px 104px 130px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#132e40; }
     .plc-panel-center span { color:#7b8d99; font:700 10px/1 Consolas,monospace; letter-spacing:.16em; }
     .plc-panel-center strong { margin-top:13px; font-size:34px; font-weight:500; letter-spacing:.04em; }
-    .plc-panel-center small { margin-top:8px; color:#0b7b70; font-size:12px; }
+    .plc-panel-center small { margin-top:8px; color:#0b7b70; font-size:14px; font-weight:700; }
     .output-terminal-rail { position:absolute; left:96px; right:22px; bottom:0; height:70px; display:grid; grid-template-columns:repeat(4,1fr); gap:8px; align-items:end; }
     .output-terminal-group { position:relative; display:flex; align-items:end; border:1px solid #82939f; border-bottom:0; background:#f9fafb; padding-top:15px; }
-    .output-terminal-group .common-label { position:absolute; top:3px; left:4px; color:#243b4a; font:700 8px/1 Consolas,monospace; }
+    .output-terminal-group .common-label { position:absolute; top:3px; left:4px; color:#243b4a; font:800 10px/1 Consolas,monospace; }
     .output-terminal-group .plc-terminal { height:52px; }
     .output-terminal-group .screw-head { width:28px; height:28px; font-size:24px; }
     .component-zone { position:relative; z-index:2; min-width:930px; display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:0 18px 18px; }
@@ -191,10 +191,10 @@
     .component-tray { border:1px solid #99aab6; background:rgba(255,255,255,.96); box-shadow:0 5px 14px rgba(26,54,72,.08); }
     .tray-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 10px; background:#183a52; color:#fff; }
     .output-tray .tray-heading { background:#654316; }
-    .tray-heading span { color:#8de1d5; font:700 8px/1 Consolas,monospace; letter-spacing:.12em; }
+    .tray-heading span { color:#8de1d5; font:700 10px/1 Consolas,monospace; letter-spacing:.1em; }
     .output-tray .tray-heading span { color:#f1c986; }
-    .tray-heading h3 { margin:3px 0 0; font-size:12px; }
-    .tray-heading > b { border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:4px 7px; font:700 9px/1 Consolas,monospace; }
+    .tray-heading h3 { margin:4px 0 0; font-size:14px; }
+    .tray-heading > b { border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:5px 8px; font:700 11px/1 Consolas,monospace; }
     .component-card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:7px; padding:9px; }
     .component-tray-empty { grid-column:1/-1; display:grid; place-items:center; min-height:64px; border:1px dashed #a7b6c0; background:#f4f8fa; color:#5a7180; font-size:12px; }
     .field-component { position:relative; display:grid; grid-template-columns:52px minmax(75px,1fr) auto; gap:8px; align-items:center; width:100%; min-height:82px; margin:0; padding:7px 8px; text-align:left; touch-action:none; overflow:visible; background:#fff; }
@@ -206,9 +206,9 @@
     .field-component.output-component .terminal-dot { top:-6px; }
     .field-component .component-copy { min-width:0; }
     .field-component .component-copy strong,.field-component .component-copy small { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .field-component .component-copy strong { color:#18384e; font:700 11px/1.2 Consolas,monospace; }
-    .field-component .component-copy small { margin-top:3px; color:#657987; font-size:9px; }
-    .field-component .terminal-code { align-self:start; border-radius:3px; padding:3px 4px; background:#edf3f6; color:#244455; font:700 9px/1 Consolas,monospace; }
+    .field-component .component-copy strong { color:#18384e; font:800 13px/1.2 Consolas,monospace; }
+    .field-component .component-copy small { margin-top:4px; color:#526b7a; font-size:11px; line-height:1.25; }
+    .field-component .terminal-code { align-self:start; border-radius:3px; padding:4px 5px; background:#edf3f6; color:#244455; font:800 11px/1 Consolas,monospace; }
     .input-contact-symbol { position:relative; display:block; width:52px; height:72px; color:#172c39; }
     .input-contact-symbol i { position:absolute; display:block; box-sizing:border-box; }
     .input-contact-symbol .contact-node { left:22px; width:9px; height:9px; border:2px solid currentColor; border-radius:50%; background:#fff; z-index:2; }
@@ -260,18 +260,18 @@
     .contact-type-badge.nc { background:#ffe4e4; color:#a02f2f; }
     .contact-type-badge.selector { background:#eee8ff; color:#6243a6; }
     .contact-type-badge.load { background:#ffefd5; color:#855718; }
-    .installed-device { position:absolute; left:50%; width:78px; display:flex; align-items:center; pointer-events:none; color:#172c39; transform:translateX(-50%); z-index:9; }
+    .installed-device { position:absolute; left:50%; width:92px; display:flex; align-items:center; pointer-events:none; color:#172c39; transform:translateX(-50%); z-index:9; }
     .installed-device.input { bottom:calc(100% - 18px); flex-direction:column; }
     .installed-device.output { top:calc(100% - 18px); flex-direction:column; }
     .installed-device .installed-lead { display:block; flex:none; width:2px; background:#1b303d; }
     .installed-device.input .installed-lead { height:calc(24px + var(--install-stagger,0) * 34px); }
     .installed-device.output .installed-lead { height:34px; }
     .installed-device.output .installed-return-lead { display:block; width:2px; height:28px; flex:none; background:#1b303d; }
-    .installed-name { display:block; width:78px; text-align:center; line-height:1.05; }
+    .installed-name { display:block; width:92px; text-align:center; line-height:1.15; }
     .installed-name b,.installed-name small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .installed-name b { color:#173246; font:800 10px/1.1 Consolas,monospace; }
-    .installed-name small { margin-top:2px; color:#647682; font:8px/1.1 "Microsoft JhengHei",sans-serif; }
-    .installed-contact-type { margin:3px 0 1px; border-radius:999px; padding:2px 4px; background:#fff; color:#8b463c; font:700 7px/1 sans-serif; white-space:nowrap; }
+    .installed-name b { color:#102f44; font:900 13px/1.1 Consolas,monospace; }
+    .installed-name small { margin-top:3px; color:#4f6573; font:700 10px/1.2 "Microsoft JhengHei",sans-serif; }
+    .installed-contact-type { margin:4px 0 2px; border:1px solid #d8c6bd; border-radius:999px; padding:3px 5px; background:#fff; color:#8b463c; font:800 9px/1 sans-serif; white-space:nowrap; }
     .installed-device.input .input-contact-symbol,.installed-device.input .selector-switch-symbol { flex:none; }
     .installed-device.output .output-load-symbol { flex:none; margin:0 0 5px; }
     .installed-device.output .output-load-symbol::before,.installed-device.output .output-load-symbol::after { display:none; }
