@@ -20,6 +20,8 @@ const COLS = 12;
       NOP: { family: 'STACK', arity: 0, category: '分支堆疊', supported: true },
       LDP: { family: 'CONTACT', arity: 1, category: '邊緣接點', supported: true },
       LDF: { family: 'CONTACT', arity: 1, category: '邊緣接點', supported: true },
+      ANDP: { family: 'CONTACT', arity: 1, category: '邊緣接點', supported: true },
+      ANDF: { family: 'CONTACT', arity: 1, category: '邊緣接點', supported: true },
       ANP: { family: 'CONTACT', arity: 1, category: '邊緣接點', supported: true },
       ANF: { family: 'CONTACT', arity: 1, category: '邊緣接點', supported: true },
       ORP: { family: 'CONTACT', arity: 1, category: '邊緣接點', supported: true },
@@ -85,7 +87,78 @@ const COLS = 12;
       ZRN: { family: 'FUNCTION', arity: 4, category: '高速定位', supported: false }
     };
 
+    // FX3U 指令目錄依三菱 FX3S/FX3G/FX3U Programming Manual
+    // (Basic & Applied Instructions, JY997D16601) 建立。圖形編輯器會接受
+    // 目錄內的基本、步進與應用指令；未建立虛擬機語意的應用指令仍可編譯，
+    // 並在寫入虛擬 PLC 前以警告說明「僅驗證語法」。
+    const FX3U_INSTRUCTION_GROUPS = [
+      { category: '基本／步進', codes: ['ANB','ORB','MPS','MRD','MPP','INV','MEP','MEF','MC','MCR','NOP','END','STL','RET'] },
+      { category: '程式流程', codes: ['CJ','CALL','SRET','IRET','EI','DI','FEND','WDT','FOR','NEXT'] },
+      { category: '比較', codes: ['CMP','ZCP'] },
+      { category: '傳送／轉換', codes: ['MOV','SMOV','CML','BMOV','FMOV','XCH','BCD','BIN'] },
+      { category: '算術／邏輯', codes: ['ADD','SUB','MUL','DIV','INC','DEC','WAND','WOR','WXOR','NEG'] },
+      { category: '循環／移位', codes: ['ROR','ROL','RCR','RCL','SFTR','SFTL','WSFR','WSFL','SFWR','SFRD'] },
+      { category: '資料處理', codes: ['ZRST','DECO','ENCO','SUM','BON','MEAN','ANS','ANR','SQR','FLT'] },
+      { category: '高速處理', codes: ['REF','REFF','MTR','HSCS','HSCR','HSZ','SPD','PLSY','PWM','PLSR'] },
+      { category: '便利指令', codes: ['IST','SER','ABSD','INCD','TTMR','STMR','ALT','RAMP','ROTC','SORT'] },
+      { category: '外部 I/O', codes: ['TKY','HKY','DSW','SEGD','SEGL','ARWS','ASC','PR','FROM','TO'] },
+      { category: '通訊／PID', codes: ['RS','PRUN','ASCI','HEX','CCD','VRRD','VRSC','RS2','PID'] },
+      { category: '索引暫存', codes: ['ZPUSH','ZPOP'] },
+      { category: '浮點比較／轉換', codes: ['ECMP','EZCP','EMOV','ESTR','EVAL','EBCD','EBIN'] },
+      { category: '浮點運算', codes: ['EADD','ESUB','EMUL','EDIV','EXP','LOGE','LOG10','ESQR','ENEG','INT','SIN','COS','TAN','ASIN','ACOS','ATAN','RAD','DEG'] },
+      { category: '資料表／排序', codes: ['WSUM','WTOB','BTOW','UNI','DIS','SWAP','SORT2'] },
+      { category: '定位', codes: ['DSZR','DVIT','TBL','ABS','ZRN','PLSV','DRVI','DRVA'] },
+      { category: '時鐘', codes: ['TCMP','TZCP','TADD','TSUB','HTOS','STOH','TRD','TWR','HOUR'] },
+      { category: '格雷碼／類比', codes: ['GRY','GBIN','RD3A','WR3A'] },
+      { category: '擴充處理', codes: ['COMRD','RND','DUTY','CRC','HCMOV'] },
+      { category: '區塊資料', codes: ['BK+','BK-','BKCMP=','BKCMP>','BKCMP<','BKCMP<>','BKCMP<=','BKCMP>='] },
+      { category: '字串', codes: ['STR','VAL','$+','LEN','RIGHT','LEFT','MIDR','MIDW','INSTR','$MOV','FDEL','FINS','POP','SFR','SFL'] },
+      { category: '比較接點', codes: ['LD=','LD>','LD<','LD<>','LD<=','LD>=','AND=','AND>','AND<','AND<>','AND<=','AND>=','OR=','OR>','OR<','OR<>','OR<=','OR>='] },
+      { category: '範圍／縮放', codes: ['LIMIT','BAND','ZONE','SCL','DABIN','BINDA','SCL2'] },
+      { category: '變頻器／緩衝記憶體', codes: ['IVCK','IVDR','IVRD','IVWR','IVBWR','IVMC','ADPRW','RBFM','WBFM','HSCT'] },
+      { category: '記錄／配方', codes: ['LOADR','SAVER','INITR','LOGR','RWER','INITER'] },
+      { category: '檔案', codes: ['FLCRT','FLDEL','FLWR','FLRD','FLCMD','FLSTRD'] }
+    ];
+
+    const FX3U_EXACT_ARITY = {
+      STL:1, RET:0, CJ:1, CALL:1, SRET:0, IRET:0, EI:0, DI:0, FEND:0, WDT:0, FOR:1, NEXT:0,
+      ANB:0, ORB:0, MPS:0, MRD:0, MPP:0, INV:0, MC:2, MCR:1, NOP:0, MEP:0, MEF:0,
+      MOV:2, SMOV:4, CML:2, BMOV:3, FMOV:3, XCH:2, BCD:2, BIN:2,
+      ADD:3, SUB:3, MUL:3, DIV:3, INC:1, DEC:1, WAND:3, WOR:3, WXOR:3, NEG:2,
+      ZRST:2, FROM:4, TO:4, PLSY:3, PWM:3, PLSR:4, ZRN:4, PLSV:3, DRVI:4, DRVA:4,
+      ZPUSH:1, ZPOP:1
+    };
+
+    const FX3U_SIMULATED = new Set([
+      'LD','LDI','LDP','LDF','AND','ANI','ANDP','ANDF','OR','ORI','ORP','ORF',
+      'OUT','SET','RST','PLS','PLF','STL','RET','MOV','DMOV','MOVP','ADD','SUB','MUL','DIV','INC','DEC',
+      'CMP','ZCP','ZRST','BMOV','FMOV','XCH','BCD','BIN','ALT'
+    ]);
+
+    FX3U_INSTRUCTION_GROUPS.forEach((group) => {
+      group.codes.forEach((code) => {
+        const current = INSTRUCTION_DB[code] || {};
+        INSTRUCTION_DB[code] = {
+          family: current.family || (code === 'STL' ? 'STEP' : 'FUNCTION'),
+          arity: Object.prototype.hasOwnProperty.call(FX3U_EXACT_ARITY, code) ? FX3U_EXACT_ARITY[code] : (current.arity ?? null),
+          minArity: Object.prototype.hasOwnProperty.call(FX3U_EXACT_ARITY, code) ? FX3U_EXACT_ARITY[code] : 0,
+          maxArity: Object.prototype.hasOwnProperty.call(FX3U_EXACT_ARITY, code) ? FX3U_EXACT_ARITY[code] : 8,
+          category: current.category || group.category,
+          outputSide: code === 'STL' ? false : (current.outputSide ?? true),
+          supported: true,
+          fx3u: true,
+          simulated: FX3U_SIMULATED.has(code)
+        };
+      });
+    });
+
+    const FX3U_INSTRUCTION_COUNT = Object.keys(INSTRUCTION_DB).filter((code) => INSTRUCTION_DB[code]?.supported !== false).length;
     const HINT_LIBRARY = [
+      { code: 'STL', category: '步進接點', template: 'STL S0' },
+      { code: 'SET', category: '步進轉移', template: 'SET S1' },
+      { code: 'RST', category: '步進復歸', template: 'RST S0' },
+      { code: 'RET', category: '步進結束', template: 'RET' },
+      { code: 'ZRST', category: '批次復歸', template: 'ZRST S0 S99' },
       { code: 'OP', category: '平行支路', template: 'OP X0' },
       { code: 'LDP', category: '上升沿接點', template: 'LDP X0' },
       { code: 'LDF', category: '下降沿接點', template: 'LDF X0' },
@@ -96,7 +169,7 @@ const COLS = 12;
     ];
 
     const SUPPORTED_INSTRUCTIONS = {
-      CONTACT: ['LD', 'AND', 'OR', 'LDI', 'ANI', 'ORI', 'LDP', 'ANP', 'ORP', 'LDF', 'ANF', 'ORF'],
+      CONTACT: ['LD', 'AND', 'OR', 'LDI', 'ANI', 'ORI', 'LDP', 'ANDP', 'ANP', 'ORP', 'LDF', 'ANDF', 'ANF', 'ORF'],
       COIL: ['OUT', 'SET', 'RST', 'PLS', 'PLF'],
       FUNCTION: ['MOV', 'MOVP', 'OUT_T', 'ADD', 'SUB', 'MUL', 'DIV', 'INC', 'DEC', 'CMP', 'DMOV', 'FMOV', 'TMR', 'CNT'],
       COMPARE: ['<', '>', '=', '<=', '>=', '<>', 'CMP']
@@ -812,6 +885,38 @@ const COLS = 12;
       else if (/^S\d+$/.test(d)) state.deviceMemory.S[d] = Boolean(value);
       else if (/^D\d+$/.test(d)) state.deviceMemory.D[d] = Number(value) || 0;
       else if (/^R\d+$/.test(d)) state.deviceMemory.R[d] = Number(value) || 0;
+      else if (/^T\d+$/.test(d)) {
+        const timer = state.deviceMemory.T[d] || { preset:0, current:0, done:false };
+        timer.done = Boolean(value);
+        if (!value) timer.current = 0;
+        state.deviceMemory.T[d] = timer;
+      } else if (/^C\d+$/.test(d)) {
+        const counter = state.deviceMemory.C[d] || { preset:0, current:0, done:false };
+        counter.done = Boolean(value);
+        if (!value) counter.current = 0;
+        state.deviceMemory.C[d] = counter;
+      }
+    }
+
+    function deviceRange(start, end) {
+      const a = String(start || '').toUpperCase().match(/^([A-Z]+)(\d+)$/);
+      const b = String(end || '').toUpperCase().match(/^([A-Z]+)(\d+)$/);
+      if (!a || !b || a[1] !== b[1]) return [];
+      const radix = a[1] === 'X' || a[1] === 'Y' ? 8 : 10;
+      const first = parseInt(a[2], radix);
+      const last = parseInt(b[2], radix);
+      if (!Number.isFinite(first) || !Number.isFinite(last) || last < first || last - first > 4096) return [];
+      return Array.from({length:last - first + 1}, (_,index) => `${a[1]}${(first + index).toString(radix).toUpperCase()}`);
+    }
+
+    function toBcd(value) {
+      const digits = Math.abs(Math.trunc(Number(value) || 0)).toString().slice(-4);
+      return Number.parseInt(digits, 16) || 0;
+    }
+
+    function fromBcd(value) {
+      const hex = Math.abs(Math.trunc(Number(value) || 0)).toString(16);
+      return /^\d+$/.test(hex) ? Number(hex) : 0;
     }
 
     function readWordValue(token) {
@@ -829,7 +934,11 @@ const COLS = 12;
       if (!component) return false;
       if (component.kind === 'CONTACT') {
         const raw = getDeviceValue(component.device);
-        return component.polarity === 'INVERSE' ? !raw : Boolean(raw);
+        const current = component.polarity === 'INVERSE' ? !raw : Boolean(raw);
+        const previous = Boolean(state.simulator.previousInputs[component.id]);
+        if (component.pulse === 'RISING') return current && !previous;
+        if (component.pulse === 'FALLING') return !current && previous;
+        return current;
       }
       if (component.kind === 'COMPARE') {
         const a = readWordValue(component.args[0]);
@@ -908,21 +1017,46 @@ const COLS = 12;
           else if (outComp.instruction === 'PLS') setDeviceValue(outComp.device, rising);
           else if (outComp.instruction === 'PLF') setDeviceValue(outComp.device, falling);
         } else if (outComp.output) {
-          if (isPowerOn) {
-            if (['MOV', 'MOVP', 'DMOV', 'FMOV'].includes(outComp.instruction)) {
+          const baseInstruction = outComp.baseInstruction || (outComp.instruction === 'MOVP' || outComp.instruction === 'DMOV' ? 'MOV' : outComp.instruction);
+          const pulseExecution = Boolean(outComp.pulse) || /P$/.test(outComp.instruction) && !['PLSR','PLSY','PWM','POP'].includes(outComp.instruction);
+          const shouldExecute = isPowerOn && (!pulseExecution || rising);
+          if (shouldExecute) {
+            if (['MOV', 'MOVP', 'DMOV'].includes(outComp.instruction) || baseInstruction === 'MOV') {
               setDeviceValue(outComp.args[1], readWordValue(outComp.args[0]));
-            } else if (['ADD', 'SUB', 'MUL', 'DIV'].includes(outComp.instruction)) {
+            } else if (['ADD', 'SUB', 'MUL', 'DIV'].includes(baseInstruction)) {
               const a = readWordValue(outComp.args[0]);
               const b = readWordValue(outComp.args[1]);
-              const result = outComp.instruction === 'ADD' ? a + b
-                : outComp.instruction === 'SUB' ? a - b
-                : outComp.instruction === 'MUL' ? a * b
+              const result = baseInstruction === 'ADD' ? a + b
+                : baseInstruction === 'SUB' ? a - b
+                : baseInstruction === 'MUL' ? a * b
                 : (b === 0 ? 0 : Math.trunc(a / b));
               setDeviceValue(outComp.args[2], result);
-            } else if (outComp.instruction === 'INC') {
+            } else if (baseInstruction === 'INC') {
               setDeviceValue(outComp.args[0], readWordValue(outComp.args[0]) + 1);
-            } else if (outComp.instruction === 'DEC') {
+            } else if (baseInstruction === 'DEC') {
               setDeviceValue(outComp.args[0], readWordValue(outComp.args[0]) - 1);
+            } else if (baseInstruction === 'ZRST') {
+              deviceRange(outComp.args[0], outComp.args[1]).forEach((device) => setDeviceValue(device, 0));
+            } else if (baseInstruction === 'BMOV') {
+              const count = Math.max(0, readWordValue(outComp.args[2]));
+              const sources = deviceRange(outComp.args[0], outComp.args[0].replace(/\d+$/, (n) => String(Number(n) + count - 1)));
+              const destinations = deviceRange(outComp.args[1], outComp.args[1].replace(/\d+$/, (n) => String(Number(n) + count - 1)));
+              sources.forEach((source,index) => setDeviceValue(destinations[index], readWordValue(source)));
+            } else if (baseInstruction === 'FMOV') {
+              const count = Math.max(0, readWordValue(outComp.args[2]));
+              const destinations = deviceRange(outComp.args[1], outComp.args[1].replace(/\d+$/, (n) => String(Number(n) + count - 1)));
+              destinations.forEach((device) => setDeviceValue(device, readWordValue(outComp.args[0])));
+            } else if (baseInstruction === 'XCH') {
+              const a = readWordValue(outComp.args[0]);
+              const b = readWordValue(outComp.args[1]);
+              setDeviceValue(outComp.args[0], b);
+              setDeviceValue(outComp.args[1], a);
+            } else if (baseInstruction === 'BCD') {
+              setDeviceValue(outComp.args[1], toBcd(readWordValue(outComp.args[0])));
+            } else if (baseInstruction === 'BIN') {
+              setDeviceValue(outComp.args[1], fromBcd(readWordValue(outComp.args[0])));
+            } else if (baseInstruction === 'ALT' && rising) {
+              setDeviceValue(outComp.args[0], !getDeviceValue(outComp.args[0]));
             } else if (outComp.instruction === 'OUT' && /^T\d+$/.test(outComp.device || '')) {
               const preset = readWordValue(outComp.args[1]);
               const timer = state.deviceMemory.T[outComp.device] || { preset, current: 0, done: false };
@@ -948,6 +1082,10 @@ const COLS = 12;
       });
 
       state.deviceMemory.special.M8002 = false;
+      Object.values(state.components).filter((component) => component.kind === 'CONTACT').forEach((component) => {
+        const raw = getDeviceValue(component.device);
+        state.simulator.previousInputs[component.id] = component.polarity === 'INVERSE' ? !raw : Boolean(raw);
+      });
       renderDeviceWatchPanel();
 
       state.simulator.report = [
@@ -1098,7 +1236,7 @@ const COLS = 12;
         return { instruction: opcode, device: parts[1] };
       }
       const meta = INSTRUCTION_DB[opcode];
-      if (meta?.outputSide) return { instruction: opcode, device: parts[parts.length - 1] || '' };
+      if (meta?.outputSide) return { instruction: opcode, device: parts.length > 1 ? (parts[parts.length - 1] || '') : '' };
       if (opcode === 'ZCP' && parts.length >= 5) return { instruction: opcode, device: parts[4] };
       return null;
     }
@@ -1144,7 +1282,10 @@ const COLS = 12;
     }
 
     function isLabelToken(token) {
-      return /^[A-Z_][A-Z0-9_]*$/.test(token) && !/^([XYMDTC]|TC)\d+$/.test(token) && !/^K-?\d+$/.test(token) && !/^H[0-9A-F]+$/.test(token);
+      return /^[A-Z_][A-Z0-9_]*$/.test(token)
+        && !/^(?:X|Y|M|S|T|C|D|R|V|Z|P|I|N|TC)\d+$/.test(token)
+        && !/^K-?\d+$/.test(token)
+        && !/^H[0-9A-F]+$/.test(token);
     }
 
     function resolveLabelOrDevice(token) {
@@ -1202,10 +1343,75 @@ const COLS = 12;
       return { ok: false, error: `參數格式錯誤：${rawToken.toUpperCase()} 不符合 ${accepted.join('/')}。`, code: 'E302', suggestion: '請改用合法的裝置或常數格式。' };
     }
 
+    function tokenizeInstruction(raw) {
+      return (String(raw || '').match(/"[^"]*"|'[^']*'|[^\s]+/g) || [])
+        .map((token) => (/^['"]/.test(token) ? token : token.toUpperCase()));
+    }
+
+    function resolveFx3uInstruction(opcode) {
+      const exact = INSTRUCTION_DB[opcode];
+      if (exact && exact.supported !== false) return { opcode, base: opcode, meta: exact, doubleWord: false, pulse: false };
+
+      // FX 應用指令可依適用表使用 D（32 位元）與 P（脈衝執行）修飾。
+      // 先找 D+P，再找單一修飾；真正的 D 開頭指令會在上方 exact 優先命中。
+      const candidates = [];
+      if (opcode.startsWith('D') && opcode.endsWith('P') && opcode.length > 2) {
+        candidates.push({ base: opcode.slice(1, -1), doubleWord: true, pulse: true });
+      }
+      if (opcode.endsWith('P') && opcode.length > 1) candidates.push({ base: opcode.slice(0, -1), doubleWord: false, pulse: true });
+      if (opcode.startsWith('D') && opcode.length > 1) candidates.push({ base: opcode.slice(1), doubleWord: true, pulse: false });
+
+      for (const candidate of candidates) {
+        const meta = INSTRUCTION_DB[candidate.base];
+        if (meta?.fx3u && meta.family === 'FUNCTION' && meta.supported !== false) {
+          return { opcode, ...candidate, meta };
+        }
+      }
+      return null;
+    }
+
+    function validateFx3uGenericOperand(rawToken) {
+      const token = String(rawToken || '').toUpperCase();
+      if (/^[XY]\d+$/.test(token) && !isDeviceX(token) && !isDeviceY(token)) {
+        return { ok:false, error:`位址 ${token} 不合法：X／Y 裝置只能使用八進制數字 0～7。`, code:'E305', suggestion:`請改用八進制位址，例如 ${token[0]}7 的下一點是 ${token[0]}10。` };
+      }
+      if (/^['"][\s\S]*['"]$/.test(rawToken)) return { ok:true, value:rawToken };
+      if (/^-?\d+(?:\.\d+)?$/.test(token)) return { ok:true, value:token };
+      if (/^E-?\d+(?:\.\d+)?$/.test(token)) return { ok:true, value:token };
+      if (/^(?:K-?\d+|H[0-9A-F]+)$/.test(token)) return { ok:true, value:token };
+      if (/^K[1-8](?:X[0-7]+|Y[0-7]+|M\d+|S\d+)$/.test(token)) return { ok:true, value:token };
+      if (/^(?:X[0-7]+|Y[0-7]+|M\d+|S\d+|T\d+|C\d+|D\d+|R\d+|V\d+|Z\d+|P\d+|I\d+|N\d+)(?:[VZ]\d+)?(?:\.\d+)?$/.test(token)) return { ok:true, value:token };
+      if (/^U[0-9A-F]+\\G\d+$/.test(token)) return { ok:true, value:token };
+      if (/^@[DR]\d+$/.test(token)) return { ok:true, value:token };
+      if (/^[A-Z_$][A-Z0-9_.$:+\-]*$/.test(token)) return { ok:true, value:token };
+      return { ok:false, error:`FX3U 參數格式錯誤：${rawToken}。`, code:'E332', suggestion:'請使用裝置、常數、指標、標籤或字串參數；X／Y 位址必須為八進制。' };
+    }
+
+    function parseGenericFx3uInstruction(resolved, args) {
+      const { opcode, base, meta, doubleWord, pulse } = resolved;
+      const min = Number.isInteger(meta.arity) ? meta.arity : (meta.minArity ?? 0);
+      const max = Number.isInteger(meta.arity) ? meta.arity : (meta.maxArity ?? 8);
+      if (args.length < min || args.length > max) {
+        const expected = min === max ? `${min} 個` : `${min}～${max} 個`;
+        return { error:`錯誤：${opcode} 需要 ${expected}參數，目前輸入 ${args.length} 個。`, code:'E331', suggestion:`請依 FX3U 手冊確認 ${base} 的運算元數量與裝置範圍。` };
+      }
+      const checked = [];
+      for (const arg of args) {
+        const result = validateFx3uGenericOperand(arg);
+        if (!result.ok) return result;
+        checked.push(result.value);
+      }
+      return {
+        kind:'FUNCTION', display:[opcode, ...checked].join(' '), instruction:opcode, baseInstruction:base,
+        args:checked, span:Math.min(4, Math.max(2, checked.length + 1)), output:true, alignRight:true,
+        polarity:'NORMAL', fx3u:true, doubleWord, pulse, simulated:Boolean(meta.simulated)
+      };
+    }
+
     function parseInstruction(text, context = {}) {
       const raw = text.trim();
       if (!raw) return { error: '請輸入內容。', code: 'E000', suggestion: '請輸入例如 X0、Y0、MOV D0 D1。' };
-      const tokens = raw.split(/\s+/).filter(Boolean).map((token) => token.toUpperCase());
+      const tokens = tokenizeInstruction(raw);
       const [first, ...rest] = tokens;
 
       if (/^[XY]\d+$/.test(first) && !isDeviceX(first) && !isDeviceY(first)) {
@@ -1216,7 +1422,8 @@ const COLS = 12;
         if (!isDeviceX(device) && !isDeviceY(device)) return { error:`位址 ${device} 不合法：X／Y 裝置只能使用八進制數字 0～7。`, code:'E305', suggestion:`請改用八進制位址，例如 ${device[0]}7 的下一點是 ${device[0]}10。` };
       }
 
-      const meta = INSTRUCTION_DB[first];
+      const resolvedInstruction = resolveFx3uInstruction(first);
+      const meta = resolvedInstruction?.meta || INSTRUCTION_DB[first];
       if (meta && meta.supported === false) {
         return { error: `指令 ${first} 已登錄但目前尚未實作 parser。`, code: 'E330', suggestion: '請改用目前已支援的指令，或等待後續支援。' };
       }
@@ -1229,6 +1436,11 @@ const COLS = 12;
         const op = validateOperand(rest[0], ['CONTACT']);
         if (!op.ok) return op;
         return { kind: 'MACRO', macro: 'OP_BRANCH', display: `OP ${op.value}`, instruction: 'OP', device: op.value, args: [op.value], span: 1, output: false, polarity: 'NORMAL' };
+      }
+
+      if (first === 'STL') {
+        if (rest.length !== 1 || !isDeviceS(rest[0])) return { error:'STL 需要 1 個步進狀態裝置，例如 STL S0。', code:'E333', suggestion:'請使用 STL S0；步進狀態只能使用 S 裝置。' };
+        return { kind:'CONTACT', display:`STL ${rest[0]}`, device:rest[0], instruction:'STL', args:[rest[0]], span:1, output:false, polarity:'NORMAL', step:true, simulated:true };
       }
 
       if (/^\/(X|M|T|C)\d+$/.test(first)) {
@@ -1266,7 +1478,7 @@ const COLS = 12;
         const op = validateOperand(rest[0], ['CONTACT']);
         if (!op.ok) return op;
         const polarity = ['LDI', 'ANI', 'ORI'].includes(first) ? 'INVERSE' : 'NORMAL';
-        const pulse = (first === 'LDP' || first === 'ANP' || first === 'ORP') ? 'RISING' : ((first === 'LDF' || first === 'ANF' || first === 'ORF') ? 'FALLING' : null);
+        const pulse = (first === 'LDP' || first === 'ANDP' || first === 'ANP' || first === 'ORP') ? 'RISING' : ((first === 'LDF' || first === 'ANDF' || first === 'ANF' || first === 'ORF') ? 'FALLING' : null);
         return { kind: 'CONTACT', display: `${first} ${op.value}`, device: op.value, instruction: first, args: [op.value], span: 1, output: false, polarity, pulse };
       }
 
@@ -1315,7 +1527,7 @@ const COLS = 12;
         return { kind: 'COIL', display: `${first} ${op.value}`, device: op.value, instruction: first, args: [op.value], span: 1, output: true, polarity: 'NORMAL' };
       }
 
-      if (first === 'MOV' || first === 'MOVP' || first === 'DMOV' || first === 'FMOV') {
+      if (first === 'MOV' || first === 'MOVP' || first === 'DMOV') {
         if (rest.length !== 2) return { error: `錯誤：${first} 指令需要兩個參數，例如 ${first} D0 D1。`, code: 'E004', suggestion: `請使用 ${first} D0 D1 或 ${first} K10 D0。` };
         const src = validateOperand(rest[0], ['WORD', 'K', 'H']);
         if (!src.ok) return src;
@@ -1354,7 +1566,8 @@ const COLS = 12;
       }
 
       if (first === 'CMP') {
-        if (rest.length !== 2) return { error: '錯誤：CMP 需要兩個參數，例如 CMP D0 D9。', code: 'E006', suggestion: '請使用 CMP D0 D9。' };
+        if (rest.length === 3) return parseGenericFx3uInstruction({ opcode:'CMP', base:'CMP', meta:{...INSTRUCTION_DB.CMP, arity:3, simulated:false}, doubleWord:false, pulse:false }, rest);
+        if (rest.length !== 2) return { error: 'CMP 接點格式需要 2 個參數；FX3U 比較輸出格式需要 3 個參數。', code: 'E006', suggestion: '請使用 CMP D0 D9，或 CMP D0 D9 M0。' };
         const a = validateOperand(rest[0], ['WORD', 'K', 'H']);
         const b = validateOperand(rest[1], ['WORD', 'K', 'H']);
         if (!a.ok) return a;
@@ -1373,6 +1586,10 @@ const COLS = 12;
 
       if (first === 'END') {
         return { error: 'END 由系統自動維護，不需手動輸入。', code: 'E112', suggestion: '請直接編輯階梯圖內容，系統會自動維持 END。' };
+      }
+
+      if (resolvedInstruction?.meta?.fx3u) {
+        return parseGenericFx3uInstruction(resolvedInstruction, rest);
       }
 
       if (first === 'MV') return { error: '錯誤：不存在的指令 MV，是否要輸入 MOV？', code: 'E001', suggestion: '請改為 MOV。' };
@@ -1644,6 +1861,11 @@ const COLS = 12;
         output: Boolean(parsed.output),
         alignRight: Boolean(parsed.alignRight),
         pulse: parsed.pulse || null,
+        baseInstruction: parsed.baseInstruction || parsed.instruction,
+        fx3u: Boolean(parsed.fx3u),
+        doubleWord: Boolean(parsed.doubleWord),
+        simulated: parsed.simulated !== false,
+        step: Boolean(parsed.step),
         display: parsed.display,
         originText: parsed.display,
         slots: [parsed.instruction || '', ...(parsed.args || [])]
@@ -1887,7 +2109,7 @@ const COLS = 12;
       if (!firstToken) return [];
       const instructionItems = Object.keys(INSTRUCTION_DB)
         .filter((key) => INSTRUCTION_DB[key]?.supported !== false)
-        .concat(['LDP', 'ANP', 'LDF', 'ANF', 'OP'])
+        .concat(['LDP', 'ANDP', 'ANP', 'LDF', 'ANDF', 'ANF', 'OP'])
         .filter((key, index, arr) => arr.indexOf(key) === index)
         .filter((key) => key.startsWith(firstToken))
         .map((key) => ({ code: key, category: INSTRUCTION_DB[key]?.category || '擴充指令' }));
@@ -2334,14 +2556,18 @@ const COLS = 12;
 
       if (component.kind === 'CONTACT') {
         const d = component.device;
+        if (component.instruction === 'STL') {
+          if (mode === 'LD') return `STL ${d}`;
+          return mode === 'AND' ? `AND ${d}` : `OR ${d}`;
+        }
         if (component.pulse === 'RISING') {
           if (mode === 'LD') return `LDP ${d}`;
-          if (mode === 'AND') return `ANP ${d}`;
+          if (mode === 'AND') return `ANDP ${d}`;
           return `ORP ${d}`;
         }
         if (component.pulse === 'FALLING') {
           if (mode === 'LD') return `LDF ${d}`;
-          if (mode === 'AND') return `ANF ${d}`;
+          if (mode === 'AND') return `ANDF ${d}`;
           return `ORF ${d}`;
         }
         if (mode === 'LD') return component.polarity === 'INVERSE' ? `LDI ${d}` : `LD ${d}`;
@@ -2388,7 +2614,7 @@ const COLS = 12;
 
     function rewriteLeadOpcode(line, targetMode) {
       if (!line) return line;
-      const replacements = { LD: { OR: 'OR', AND: 'AND' }, LDI: { OR: 'ORI', AND: 'ANI' }, LDP: { OR: 'ORP', AND: 'ANP' }, LDF: { OR: 'ORF', AND: 'ANF' } };
+      const replacements = { LD: { OR: 'OR', AND: 'AND' }, LDI: { OR: 'ORI', AND: 'ANI' }, LDP: { OR: 'ORP', AND: 'ANDP' }, LDF: { OR: 'ORF', AND: 'ANDF' } };
       const parts = line.split(/\s+/);
       const head = parts[0] || '';
       if (replacements[head]?.[targetMode]) {
@@ -2463,7 +2689,7 @@ const COLS = 12;
       if (!Array.isArray(lines) || !lines.length) return lines || [];
       const out = [...lines];
       const first = out[0] || '';
-      const leadMap = { AND: 'LD', OR: 'LD', ANI: 'LDI', ORI: 'LDI', ANP: 'LDP', ORP: 'LDP', ANF: 'LDF', ORF: 'LDF' };
+      const leadMap = { AND: 'LD', OR: 'LD', ANI: 'LDI', ORI: 'LDI', ANDP: 'LDP', ANP: 'LDP', ORP: 'LDP', ANDF: 'LDF', ANF: 'LDF', ORF: 'LDF' };
       const token = first.split(/\s+/)[0] || '';
       if (leadMap[token]) { out[0] = `${leadMap[token]} ${first.slice(token.length).trim()}`.trim(); return out; }
       if (/^AND(CMP|[<>]=?|=|<>)\s+/i.test(first)) { out[0] = first.replace(/^AND/i, 'LD'); return out; }
@@ -2732,6 +2958,21 @@ const COLS = 12;
         if (component.kind === 'COIL' && ['PLS','PLF'].includes(component.instruction)) {
           addIssue({ code:'W230', message:`${component.instruction} 已可編譯與模擬，但脈衝只維持一個模擬掃描週期。`, row:component.row, col:component.startCol, suggestion:'以「單掃描」觀察結果最清楚。', severity:'warning' });
         }
+        if (component.fx3u && component.simulated === false) {
+          addIssue({ code:'W331', message:`${component.instruction} 已通過 FX3U 語法登錄，但虛擬 PLC 尚未模擬此指令的硬體／運算語意。`, row:component.row, col:component.startCol, suggestion:'可正常產生 IL；實際動作請依 FX3U 手冊與實機／GX Works2 模擬結果確認。', severity:'warning' });
+        }
+      });
+
+      const stepContacts = Object.values(state.components).filter((component) => component.instruction === 'STL');
+      const hasRet = Object.values(state.components).some((component) => component.instruction === 'RET');
+      if (stepContacts.length && !hasRet) {
+        const first = stepContacts[0];
+        addIssue({ code:'E334', message:'步進流程包含 STL，但缺少 RET 結束指令。', row:first.row, col:first.startCol, suggestion:'請在最後一個步進區段加入 RET。' });
+      }
+      stepContacts.forEach((component) => {
+        if (!/^S\d+$/.test(component.device || '')) {
+          addIssue({ code:'E335', message:`STL 的步進裝置 ${component.device || ''} 不合法。`, row:component.row, col:component.startCol, suggestion:'STL 僅可使用 S 裝置，例如 STL S0。' });
+        }
       });
     }
 
@@ -2901,8 +3142,8 @@ const COLS = 12;
       const summary = document.getElementById('compileSummary');
       if (summary) {
         const outputCount = Object.values(state.components).filter(c => c.kind === 'COIL' || c.output).length;
-        const unsupported = Object.entries(INSTRUCTION_DB).filter(([,m]) => m.supported === false).map(([name]) => name).join(', ');
-        summary.textContent = `PROJECT  GX-WORK Ladder Simulator\n程式步數：${state.il === 'END' ? 0 : state.il.split('\n').filter(x => x && x !== 'END').length}  輸出數：${outputCount}  錯誤/警告：${state.issues.length}\n尚未支援：${unsupported}`;
+        const semanticPending = Object.values(state.components).filter((component) => component.fx3u && component.simulated === false).length;
+        summary.textContent = `PROJECT  GX-WORK Ladder Simulator\n程式步數：${state.il === 'END' ? 0 : state.il.split('\n').filter(x => x && x !== 'END').length}  輸出數：${outputCount}  錯誤/警告：${state.issues.length}\nFX3U 指令目錄：${FX3U_INSTRUCTION_COUNT} 種  僅語法驗證：${semanticPending} 個`;
       }
     }
 
