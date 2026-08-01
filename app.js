@@ -307,6 +307,7 @@ const COLS = 12;
         previousInputs: {}
       }
     };
+    let simulatorLoopId = null;
 
     function activeQuestion() {
       return PRACTICE_QUESTIONS.find(q => q.id === state.activeQuestion) || PRACTICE_QUESTIONS[0];
@@ -657,6 +658,12 @@ const COLS = 12;
       render();
     }
 
+    function compileAndLoadVirtualPlc() {
+      compileProgram();
+      if (!state.compile.passed) return;
+      downloadToVirtualPlc();
+    }
+
     function updateQuestionSimulation(action) {
       const q = activeQuestion();
       const sim = ensurePracticeState(q.id).simulation;
@@ -665,9 +672,6 @@ const COLS = 12;
       if (action === 'sim-alarm') sim.alarm = !sim.alarm;
       if (action === 'sim-level-up') sim.level = Math.min(6, sim.level + 1);
       if (action === 'sim-level-down') sim.level = Math.max(0, sim.level - 1);
-      if (action === 'sim-open') sim.doorOpen = Math.min(1, sim.doorOpen + .5);
-      if (action === 'sim-close') sim.doorOpen = Math.max(0, sim.doorOpen - .5);
-      if (action === 'sim-position-next') sim.position = sim.position >= 84 ? 12 : sim.position + 24;
       if (action === 'sim-weight-up') sim.weight = Math.min(50, sim.weight + 10);
       if (action === 'sim-weight-down') sim.weight = Math.max(0, sim.weight - 10);
       applySimulationInputs(q, sim, action);
@@ -675,7 +679,6 @@ const COLS = 12;
       const actionLabels = {
         'sim-start':'按下啟動／RUN', 'sim-stop':'按下停止／STOP', 'sim-alarm':'切換異常／復歸',
         'sim-level-up':'液位／行程往下一階段', 'sim-level-down':'液位／行程退回上一階段',
-        'sim-open':'送出開門命令', 'sim-close':'送出關門命令', 'sim-position-next':'移動至下一定位點',
         'sim-weight-up':'增加模擬重量 10kg', 'sim-weight-down':'減少模擬重量 10kg'
       };
       sim.history.unshift({
@@ -691,6 +694,56 @@ const COLS = 12;
     function physicalOutputOn(componentId) {
       const address = ensurePracticeState().wiring[componentId];
       return address ? Boolean(getDeviceValue(address)) : false;
+    }
+
+    function syncMachineAnimationFromPlc(question, sim) {
+      if (!state.compile.passed || !state.simulator.enabled) return;
+      const writeInput = (id, value) => {
+        const address = ensurePracticeState(question.id).wiring[id];
+        if (isDeviceX(address || '')) setDeviceValue(address, value);
+      };
+      if (question.id === 3 && physicalOutputOn('PULSE')) {
+        const direction = physicalOutputOn('DIR') ? 1 : -1;
+        sim.position = Math.max(2, Math.min(90, sim.position + direction * 2.4));
+        writeInput('ORG', sim.position <= 12);
+        writeInput('LSP', sim.position >= 84);
+        writeInput('LSN', sim.position <= 6);
+      }
+      if (question.id === 4) {
+        if (physicalOutputOn('MC1')) sim.weight = Math.min(99, sim.weight + 0.6);
+        if (physicalOutputOn('MC2')) sim.weight = Math.max(0, sim.weight - 1.1);
+      }
+      if (question.id === 5) {
+        if (physicalOutputOn('MC1') && !physicalOutputOn('MC2')) sim.doorOpen = Math.min(1, sim.doorOpen + 0.045);
+        if (physicalOutputOn('MC2') && !physicalOutputOn('MC1')) sim.doorOpen = Math.max(0, sim.doorOpen - 0.045);
+        writeInput('LS1', sim.doorOpen >= 0.99);
+        writeInput('LS2', sim.doorOpen <= 0.01);
+      }
+    }
+
+    function syncSimulatorLoop() {
+      const sim = ensurePracticeState().simulation;
+      const shouldRun = state.portalView === 'practice'
+        && state.practiceStage === 'simulation'
+        && state.compile.passed
+        && state.simulator.enabled
+        && sim.running;
+      if (!shouldRun && simulatorLoopId !== null) {
+        clearInterval(simulatorLoopId);
+        simulatorLoopId = null;
+        return;
+      }
+      if (!shouldRun || simulatorLoopId !== null) return;
+      simulatorLoopId = window.setInterval(() => {
+        const current = ensurePracticeState().simulation;
+        if (state.portalView !== 'practice' || state.practiceStage !== 'simulation' || !state.compile.passed || !state.simulator.enabled || !current.running) {
+          clearInterval(simulatorLoopId);
+          simulatorLoopId = null;
+          return;
+        }
+        runOneScan();
+        if (state.simulator.scanCount % 2 === 0) render();
+      }, Math.max(160, state.simulator.scanTimeMs * 2));
     }
 
     function simulationInputKind(question, item) {
@@ -1080,6 +1133,8 @@ const COLS = 12;
         }
         state.simulator.previousPower[outComp.id] = isPowerOn;
       });
+
+      syncMachineAnimationFromPlc(activeQuestion(), ensurePracticeState().simulation);
 
       state.deviceMemory.special.M8002 = false;
       Object.values(state.components).filter((component) => component.kind === 'CONTACT').forEach((component) => {
@@ -3293,31 +3348,43 @@ const COLS = 12;
 
     function machineBodyMarkup(question, sim) {
       const lampIds = question.outputs.filter(item => /^PL|BZ/.test(item.id)).slice(0,8);
-      const lampHtml = `<div class="sim-lamp-row">${lampIds.map((item,index) => `<div class="sim-lamp ${physicalOutputOn(item.id) || (!state.compile.passed && sim.running && index < Math.max(1,Math.min(lampIds.length,sim.level))) || (item.id === 'BZ' && sim.alarm) ? 'on' : ''} ${item.id === 'BZ' ? 'alarm' : ''}">${item.id}</div>`).join('')}</div>`;
-      if (question.machine === 'door') return `<div class="sim-door-frame" style="--open:${sim.doorOpen}"><div class="sim-door left"></div><div class="sim-door right"></div></div>${lampHtml}`;
-      if (question.machine === 'tank') return `<div class="sim-motor ${physicalOutputOn('MC1') || (!state.compile.passed && sim.running) ? 'on' : ''}" style="left:55px;top:76px">M1</div><div class="sim-tank" style="--level:${(sim.level/6)*100}%"><div class="sim-water"></div></div><div class="sim-motor ${physicalOutputOn('MC2') || (!state.compile.passed && sim.running && sim.level >= 3) ? 'on' : ''}" style="right:55px;top:76px">M2</div>${lampHtml}`;
-      if (question.machine === 'slider') return `<div class="sim-conveyor" style="--belt:${sim.running ? '-28px' : '0'}"></div><div class="sim-slider" style="--position:${sim.position}%">SLIDE</div>${lampHtml}`;
-      if (question.machine === 'hopper') return `<div class="sim-hopper"></div><div class="sim-scale">${String(sim.weight).padStart(2,'0')}.0 kg</div>${lampHtml}`;
-      return `<div class="sim-conveyor" style="--belt:${sim.running ? '-28px' : '0'}"></div><div class="sim-motor ${physicalOutputOn('MC1') || (!state.compile.passed && sim.running) ? 'on' : ''}" style="left:58px;top:72px">M1</div><div class="sim-motor ${physicalOutputOn('MC2') || (!state.compile.passed && sim.running && sim.level >= 2) ? 'on' : ''}" style="left:calc(50% - 36px);top:72px">M2</div><div class="sim-motor ${physicalOutputOn('MC3') || (!state.compile.passed && sim.running && sim.level >= 3) ? 'on' : ''}" style="right:58px;top:72px">M3</div>${lampHtml}`;
+      const lampHtml = `<div class="sim-lamp-row">${lampIds.map(item => `<div class="sim-lamp ${physicalOutputOn(item.id) ? 'on' : ''} ${item.id === 'BZ' ? 'alarm' : ''}">${item.id}</div>`).join('')}</div>`;
+      const motor = (id, label, positionClass = '') => `<div class="sim-motor ${positionClass} ${physicalOutputOn(id) ? 'on' : ''}"><span>${label}</span><small>${physicalOutputOn(id) ? 'ON' : 'OFF'}</small></div>`;
+      if (question.id === 1) {
+        const beltOn = ['MC1','MC2','MC3'].some(physicalOutputOn);
+        return `<div class="sim-conveyor ${beltOn ? 'on' : ''}"></div>${motor('MC1','M1','motor-left')}${motor('MC2','M2','motor-center')}${motor('MC3','M3','motor-right')}${lampHtml}`;
+      }
+      if (question.id === 2) {
+        return `<div class="sim-pipe-network"></div>${motor('MC1','#1 PUMP','motor-left')}${motor('MC2','#2 PUMP','motor-right')}<div class="sim-tank" style="--level:${(sim.level/6)*100}%"><div class="sim-water"></div><b>水塔</b></div>${lampHtml}`;
+      }
+      if (question.id === 3) {
+        const pulseOn = physicalOutputOn('PULSE');
+        return `<div class="sim-position-scale"><span>0</span><span>A</span><span>B</span><span>C</span><span>100</span></div><div class="sim-conveyor slider-rail ${pulseOn ? 'on' : ''}"></div><div class="sim-slider ${pulseOn ? 'moving' : ''}" style="--position:${sim.position}%"><b>SLIDE</b><small>${Math.round(sim.position)}%</small></div>${lampHtml}`;
+      }
+      if (question.id === 4) {
+        return `${motor('MC1','下料','motor-left')}<div class="sim-hopper ${physicalOutputOn('MC2') ? 'gate-open' : ''}"><span></span></div><div class="sim-scale">${Number(sim.weight).toFixed(1)} kg</div><div class="sim-gate-state ${physicalOutputOn('MC2') ? 'on' : ''}">出料閘門 ${physicalOutputOn('MC2') ? 'OPEN' : 'CLOSED'}</div>${lampHtml}`;
+      }
+      if (question.id === 5) {
+        return `${motor('MC1','開門','motor-left')}${motor('MC2','關門','motor-right')}<div class="sim-door-frame" style="--open:${sim.doorOpen}"><div class="sim-door left"></div><div class="sim-door right"></div><div class="door-position">${Math.round(sim.doorOpen * 100)}%</div></div>${lampHtml}`;
+      }
+      return `<div class="sim-valve ${physicalOutputOn('SV') ? 'on' : ''}">SV</div>${motor('MC1','M1','motor-left')}${motor('MC2','M2','motor-right')}<div class="sim-tank wastewater" style="--level:${(sim.level/6)*100}%"><div class="sim-water"></div><b>S${sim.level}</b></div><div class="speed-state"><span class="${physicalOutputOn('INV40') ? 'on' : ''}">40%</span><span class="${physicalOutputOn('INV100') ? 'on' : ''}">100%</span></div>${lampHtml}`;
     }
 
     function buildSimulationStage() {
       const q = activeQuestion();
       const sim = ensurePracticeState(q.id).simulation;
-      const extraControls = q.machine === 'door' ? '<button data-action="sim-open">開門</button><button data-action="sim-close">關門</button>'
-        : q.machine === 'slider' ? '<button data-action="sim-position-next">下一定位點</button>'
-        : q.machine === 'hopper' ? '<button data-action="sim-weight-up">增加 10kg</button><button data-action="sim-weight-down">減少 10kg</button>'
-        : q.machine === 'conveyor' ? '<button data-action="sim-level-up">推進下一行程</button><button data-action="sim-level-down">回到前一行程</button>'
-        : '<button data-action="sim-level-up">水位上升</button><button data-action="sim-level-down">水位下降</button>';
+      const extraControls = (q.id === 2 || q.id === 6) ? '<button data-action="sim-level-up">水位上升</button><button data-action="sim-level-down">水位下降</button>'
+        : q.id === 4 ? '<button data-action="sim-weight-up">增加外部重量</button><button data-action="sim-weight-down">減少外部重量</button>' : '';
       const procedures = simulationProcedure(q);
+      const outputActive = q.outputs.some(item => physicalOutputOn(item.id));
       const panel = document.createElement('div');
       panel.className = 'editor-stage';
       panel.innerHTML = `
-        <div class="stage-heading"><div><h2>虛擬 PLC 與機台動作</h2><p>編譯成功後寫入虛擬 PLC；按鈕會改變感測情境並執行一次掃描。</p></div><span class="stage-badge">${state.compile.passed ? 'PROGRAM LOADED' : 'PROGRAM NOT LOADED'}</span></div>
+        <div class="stage-heading"><div><h2>虛擬 PLC 與機台動作</h2><p>所有馬達、燈號、門、滑台、閘門與速度顯示都直接讀取使用者程式產生的 PLC 輸出。</p></div><span class="stage-badge">${state.compile.passed ? 'PROGRAM LOADED' : 'PROGRAM NOT LOADED'}</span></div>
         <div class="machine-stage">
           <div class="machine-toolbar"><button class="primary" data-action="download-plc">重新寫入虛擬 PLC</button><button data-action="sim-start">啟動／RUN</button><button data-action="sim-stop">停止／STOP</button>${extraControls}<button data-action="sim-alarm">異常／復歸</button><button data-action="scan-once">執行單次掃描</button></div>
           ${simulationInputPanelMarkup(q)}
-          <div class="machine-scene"><div class="machine-visual"><div class="machine-titlebar"><span>${q.code} / ${q.title}</span><span>${sim.running ? 'RUN' : 'STOP'} · ${state.simulator.scanTimeMs}ms</span></div><div class="machine-body">${machineBodyMarkup(q,sim)}</div></div></div>
+          <div class="machine-scene"><div class="machine-visual"><div class="machine-titlebar"><span>${q.code} / ${q.title}</span><span>${outputActive ? 'OUTPUT ACTIVE' : 'OUTPUT IDLE'} · ${state.simulator.scanTimeMs}ms</span></div><div class="machine-body">${machineBodyMarkup(q,sim)}</div></div></div>
           <div class="simulation-details">
             <section class="operation-guide"><div class="section-kicker">OPERATION PROCEDURE</div><h3>建議操作流程</h3><ol>${procedures.map((item,index) => `<li><span>${index + 1}</span><p>${item}</p></li>`).join('')}</ol></section>
             <section class="live-process"><div class="section-kicker">LIVE I/O PROCESS</div><h3>即時輸出與動作</h3><div class="process-output-grid">${q.outputs.map(item => `<div class="process-output ${physicalOutputOn(item.id) ? 'on' : ''}"><span class="process-led"></span><div><strong>${item.id}</strong><small>${item.label}</small></div><b>${physicalOutputOn(item.id) ? 'ON' : 'OFF'}</b></div>`).join('')}</div></section>
@@ -3362,19 +3429,7 @@ const COLS = 12;
       toolbar.className = 'toolbar';
       toolbar.style.display = state.practiceStage === 'ladder' ? 'flex' : 'none';
       toolbar.innerHTML = `
-        <button data-action="compile">轉換／編譯</button>
-        <button data-action="download-plc">寫入虛擬 PLC</button>
-        <button data-action="run-tests">功能檢查</button>
-        <button data-action="scan-once">單掃描</button>
-        <button data-action="reset-sim">重置模擬</button>
-        <span class="separator"></span>
-        <button data-action="undo">復原</button>
-        <button data-action="redo">重做</button>
-        <button data-action="export">儲存 JSON</button>
-        <button data-action="import">開啟 JSON</button>
-        <button data-action="clear">清空</button>
-        <input id="jsonFileInput" type="file" accept="application/json,.json" hidden />
-        <span class="hint">雙擊儲存格或直接鍵入：編輯元件｜Ctrl+左／右：每次配線一整格｜Delete：刪除</span>
+        <button class="compile-primary-button" data-action="compile">編譯</button>
       `;
       shell.appendChild(toolbar);
       shell.appendChild(buildMissionStrip());
@@ -3382,16 +3437,12 @@ const COLS = 12;
       const workspace = document.createElement('div');
       workspace.className = 'workspace';
       if (state.practiceStage === 'ladder') workspace.classList.add('ladder-workspace');
+      else workspace.classList.add(`${state.practiceStage}-workspace`);
 
       const toolbox = document.createElement('div');
       toolbox.className = 'panel toolbox';
       const q = activeQuestion();
       toolbox.innerHTML = `
-        <section class="side-section">
-          <div class="section-kicker">QUESTION ${String(q.id).padStart(2,'0')}</div>
-          <div class="section-title">${q.title}</div>
-          <ul class="brief-list">${q.brief.map(item => `<li>${item}</li>`).join('')}</ul>
-        </section>
         <section class="side-section">
           <div class="section-kicker">FIELD DEVICES</div>
           <div class="section-title">本題元件</div>
@@ -3573,33 +3624,14 @@ const COLS = 12;
       workspace.appendChild(editorArea);
 
       const infoPanel = document.createElement('div');
-      infoPanel.className = 'panel';
+      infoPanel.className = 'panel info-panel';
       const currentMapping = ensurePracticeState(q.id).wiring;
       infoPanel.innerHTML = `
         <div class="right-stack">
           <section class="mini-panel io-address-panel"><h3>本題元件與使用者 PLC 接點</h3><div class="io-table-heading"><span>元件名稱</span><span>PLC I/O</span></div><div class="io-live-grid">${questionIoItems(q).map(item => `<div class="io-live ${item.io} ${currentMapping[item.id] && getDeviceValue(currentMapping[item.id]) ? 'on' : ''}" data-device-toggle="${currentMapping[item.id] || ''}" title="${item.label}"><div><strong>${item.id}</strong><small>${item.label}</small></div><span>${currentMapping[item.id] || '未配線'}</span></div>`).join('')}</div></section>
-          <section class="mini-panel"><h3>流程狀態</h3><div class="brief-list">接線 ${Object.keys(currentMapping).length}/${q.inputs.length + q.outputs.length} · 編譯 ${state.compile.passed ? '通過' : state.compile.attempted ? '失敗' : '未執行'} · PLC ${state.simulator.enabled ? '已寫入' : '未寫入'} · 掃描 ${state.simulator.scanCount}</div></section>
         </div>
         <div id="compileSummary" class="compile-summary"></div>
-        <div style="margin-top:10px;"><strong>裝置監看 / 暫存器搜尋</strong></div>
-        <div class="device-watch-panel">
-          <input id="deviceSearchInput" placeholder="輸入 D0、M0、Y0、T0、C0、M8000" value="${state.deviceMemory.lastSearch || ''}" />
-          <div>
-            <button data-action="watch-device">查詢</button>
-            <button data-action="toggle-device">切換 ON/OFF</button>
-          </div>
-          <input id="deviceValueInput" placeholder="寫入數值，例如 123" />
-          <button data-action="write-device">寫入數值</button>
-          <div id="deviceWatchBox" class="mono-box checklist-box" style="margin-top: 4px;"></div>
-        </div>
-
-        <div style="margin-top:10px;"><strong>檢查清單</strong></div>
-        <div id="checklistBox" class="mono-box checklist-box"></div>
-        <div style="margin-top:10px;"><strong>錯誤列表（可點擊定位）</strong></div>
-        <div id="issueList" class="issue-list"></div>
-        <div style="margin-top:10px;"><strong>功能測試報告</strong></div>
-        <div id="testReportBox" class="mono-box checklist-box"></div>
-        <div style="margin-top:10px;"><strong>助記碼</strong></div>
+        <div class="il-heading"><strong>編譯後助記碼</strong><small>錯誤會在按下「編譯」後集中顯示</small></div>
         <div id="output" class="mono-box"></div>
       `;
       workspace.appendChild(infoPanel);
@@ -3623,23 +3655,16 @@ const COLS = 12;
       dom.deviceWatchBox = infoPanel.querySelector('#deviceWatchBox');
       dom.deviceValueInput = infoPanel.querySelector('#deviceValueInput');
 
-      const jsonFileInput = toolbar.querySelector('#jsonFileInput');
-      jsonFileInput.addEventListener('change', () => { importJsonFile(jsonFileInput.files?.[0]); jsonFileInput.value = ''; });
-
       if (dom.canvasWrap) {
         dom.canvasWrap.scrollLeft = previousScroll.left;
         dom.canvasWrap.scrollTop = previousScroll.top;
       }
       
-      dom.deviceSearchInput.addEventListener('input', (e) => {
-        state.deviceMemory.lastSearch = e.target.value;
-      });
-
       renderIssues();
       updateStatus();
       if (dom.output) dom.output.textContent = state.il || 'END';
-      renderDeviceWatchPanel();
       if (state.practiceStage === 'wiring') requestAnimationFrame(drawWiringLines);
+      syncSimulatorLoop();
     }
 
     document.addEventListener('keydown', (event) => {
@@ -3742,7 +3767,7 @@ const COLS = 12;
 
       if (actionTarget) {
         const action = actionTarget.dataset.action;
-        if (action === 'compile') compileProgram();
+        if (action === 'compile') compileAndLoadVirtualPlc();
         else if (action === 'download-plc') downloadToVirtualPlc();
         else if (action === 'run-tests') runFunctionalTests();
         else if (action === 'scan-once') runOneScan();
