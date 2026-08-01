@@ -442,11 +442,13 @@
     body { min-width:320px; overflow-x:hidden; }
     button { min-height:38px; }
     .app-shell { width:100%; }
-    .toolbar { justify-content:flex-end; min-height:58px; padding:9px clamp(12px,2vw,28px); background:#f4f7f9; border-bottom:1px solid #afbdc8; }
+    .toolbar { justify-content:space-between; min-height:58px; padding:9px clamp(12px,2vw,28px); background:#f4f7f9; border-bottom:1px solid #afbdc8; }
+    .ladder-tool-strip { display:flex; flex:1 1 auto; flex-wrap:wrap; gap:6px; min-width:0; }
+    .toolbar .ladder-tool-button { min-height:40px; border:1px solid #aebbc6; border-radius:6px; padding:7px 12px; background:#fff; color:#29465b; font-size:13px; font-weight:800; }
+    .toolbar .ladder-tool-button.active { border-color:#168d80; background:#e6f8f5; color:#07695f; box-shadow:inset 0 0 0 1px #168d80; }
     .toolbar .compile-primary-button { min-width:132px; min-height:42px; border:1px solid #06756a; border-radius:6px; background:linear-gradient(180deg,#16a694,#08796e); color:#fff; font-size:15px; font-weight:900; box-shadow:0 4px 10px rgba(8,121,110,.2); }
     .toolbar .compile-primary-button:hover { border-color:#045d55; background:#076e64; }
-    .workspace,.workspace.ladder-workspace { width:100%; max-width:1920px; margin:0 auto; grid-template-columns:minmax(220px,260px) minmax(0,1fr) minmax(300px,350px); gap:clamp(8px,1vw,16px); padding:clamp(8px,1vw,16px); }
-    .workspace.wiring-workspace,.workspace.simulation-workspace,.workspace.assessment-workspace { grid-template-columns:minmax(210px,250px) minmax(0,1fr) minmax(280px,330px); }
+    .workspace,.workspace.ladder-workspace,.workspace.wiring-workspace,.workspace.simulation-workspace,.workspace.assessment-workspace { width:100%; max-width:1920px; margin:0 auto; grid-template-columns:minmax(0,1fr); gap:clamp(8px,1vw,16px); padding:clamp(8px,1vw,16px); }
     .panel { padding:clamp(9px,1vw,14px); }
     .editor-area { width:100%; overflow:hidden; }
     .canvas-wrap { min-height:clamp(600px,calc(100dvh - 300px),940px); padding:clamp(8px,1vw,16px); scrollbar-gutter:stable both-edges; }
@@ -457,7 +459,7 @@
     .il-heading small { color:#6b7e8c; font-size:10px; text-align:right; }
     .info-panel .mono-box { min-height:92px; max-height:220px; }
 
-    .wiring-board { width:100%; min-height:1180px; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+    .wiring-board { width:100%; height:clamp(620px,calc(100dvh - 250px),960px); min-height:620px; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable both-edges; scroll-behavior:smooth; touch-action:pan-x pan-y; }
     .plc-external-panel,.wiring-component-zone { min-width:1240px; }
     .plc-external-panel { width:max(1240px,calc(100% - 36px)); height:390px; margin-top:180px; margin-bottom:205px; }
     .wiring-component-zone { width:max(1240px,calc(100% - 36px)); }
@@ -515,8 +517,6 @@
     @keyframes beltMove { to { background-position:-56px 0; } }
 
     @media (max-width:1440px) {
-      .workspace,.workspace.ladder-workspace,.workspace.wiring-workspace,.workspace.simulation-workspace,.workspace.assessment-workspace { grid-template-columns:minmax(210px,245px) minmax(0,1fr); }
-      .workspace > .info-panel { grid-column:1 / -1; }
       .info-panel .io-live-grid { grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
       .mission-strip { grid-template-columns:1fr; }
     }
@@ -524,10 +524,6 @@
       .academy-header-main { align-items:flex-start; flex-direction:column; }
       .header-status { width:100%; justify-content:flex-start; }
       .mission-strip { padding:10px 12px; }
-      .workspace,.workspace.ladder-workspace,.workspace.wiring-workspace,.workspace.simulation-workspace,.workspace.assessment-workspace { grid-template-columns:1fr; }
-      .workspace > .info-panel { grid-column:auto; }
-      .toolbox { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-      .toolbox .side-section { margin:0; padding:0; border:0; }
       .stage-heading { flex-direction:column; }
       .stage-badge { align-self:flex-start; }
       .simulation-details { grid-template-columns:1fr; }
@@ -536,11 +532,13 @@
     @media (max-width:600px) {
       .brand-title { font-size:16px; }
       .brand-subtitle { font-size:10px; }
-      .toolbar { justify-content:stretch; }
+      .toolbar { align-items:stretch; justify-content:stretch; }
+      .ladder-tool-strip { display:grid; flex-basis:100%; grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .toolbar .ladder-tool-button { width:100%; padding-left:7px; padding-right:7px; }
       .toolbar .compile-primary-button { width:100%; }
       .workflow { grid-template-columns:1fr 1fr; }
       .mission-copy { display:none; }
-      .toolbox { grid-template-columns:1fr; }
+      .wiring-board { height:calc(100dvh - 190px); min-height:560px; }
       .octal-address-notice { align-items:flex-start; flex-direction:column; }
       .component-card-grid { grid-template-columns:repeat(2,minmax(210px,1fr)); }
       .wiring-help { align-items:flex-start; flex-direction:column; min-width:700px; }

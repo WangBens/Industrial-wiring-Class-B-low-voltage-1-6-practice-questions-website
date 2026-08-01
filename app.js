@@ -3419,6 +3419,8 @@ const COLS = 12;
       }
       const previousCanvas = root.querySelector('.canvas-wrap');
       const previousScroll = previousCanvas ? { left: previousCanvas.scrollLeft, top: previousCanvas.scrollTop } : { left: 0, top: 0 };
+      const previousWiringBoard = root.querySelector('.wiring-board');
+      const previousWiringScroll = previousWiringBoard ? { left: previousWiringBoard.scrollLeft, top: previousWiringBoard.scrollTop } : { left: 0, top: 0 };
 
       root.innerHTML = '';
       const shell = document.createElement('div');
@@ -3429,6 +3431,13 @@ const COLS = 12;
       toolbar.className = 'toolbar';
       toolbar.style.display = state.practiceStage === 'ladder' ? 'flex' : 'none';
       toolbar.innerHTML = `
+        <div class="ladder-tool-strip" role="group" aria-label="階梯圖元件工具">
+          <button data-tool="CONTACT" class="ladder-tool-button ${state.tool === 'CONTACT' ? 'active' : ''}">常開接點</button>
+          <button data-tool="CONTACT_NC" class="ladder-tool-button ${state.tool === 'CONTACT_NC' ? 'active' : ''}">常閉接點</button>
+          <button data-tool="COIL" class="ladder-tool-button ${state.tool === 'COIL' ? 'active' : ''}">輸出線圈</button>
+          <button data-tool="FUNCTION" class="ladder-tool-button ${state.tool === 'FUNCTION' ? 'active' : ''}">功能方塊</button>
+          <button data-tool="COMPARE" class="ladder-tool-button ${state.tool === 'COMPARE' ? 'active' : ''}">比較方塊</button>
+        </div>
         <button class="compile-primary-button" data-action="compile">編譯</button>
       `;
       shell.appendChild(toolbar);
@@ -3439,27 +3448,7 @@ const COLS = 12;
       if (state.practiceStage === 'ladder') workspace.classList.add('ladder-workspace');
       else workspace.classList.add(`${state.practiceStage}-workspace`);
 
-      const toolbox = document.createElement('div');
-      toolbox.className = 'panel toolbox';
       const q = activeQuestion();
-      toolbox.innerHTML = `
-        <section class="side-section">
-          <div class="section-kicker">FIELD DEVICES</div>
-          <div class="section-title">本題元件</div>
-          <div class="device-pills">${q.inputs.map(item => `<span class="device-pill input" title="${item.label}">${item.id}</span>`).join('')}${q.outputs.map(item => `<span class="device-pill output" title="${item.label}">${item.id}</span>`).join('')}</div>
-        </section>
-        <section class="side-section" style="display:${state.practiceStage === 'ladder' ? 'block' : 'none'}">
-          <div class="section-kicker">LADDER TOOLBOX</div>
-          <div class="section-title">階梯圖元件</div>
-          <button data-tool="CONTACT" class="${state.tool === 'CONTACT' ? 'active' : ''}">常開接點</button>
-          <button data-tool="CONTACT_NC" class="${state.tool === 'CONTACT_NC' ? 'active' : ''}">常閉接點</button>
-          <button data-tool="COIL" class="${state.tool === 'COIL' ? 'active' : ''}">輸出線圈</button>
-          <button data-tool="FUNCTION" class="${state.tool === 'FUNCTION' ? 'active' : ''}">功能方塊</button>
-          <button data-tool="COMPARE" class="${state.tool === 'COMPARE' ? 'active' : ''}">比較方塊</button>
-        </section>
-        <section class="side-section"><div class="section-kicker">REFERENCE</div><div class="section-title">考試提醒</div><ul class="brief-list"><li>先完成 PLC 外部接線圖再輸入程式</li><li>指示燈不得由 PLC 輸出直接驅動功率負載</li><li>EMS、過載與正反轉須設外部連鎖</li><li>模擬結果僅供練習，需再與正式評審表核對</li></ul></section>
-      `;
-      workspace.appendChild(toolbox);
 
       const editorArea = document.createElement('div');
       editorArea.className = 'panel editor-area';
@@ -3658,6 +3647,11 @@ const COLS = 12;
       if (dom.canvasWrap) {
         dom.canvasWrap.scrollLeft = previousScroll.left;
         dom.canvasWrap.scrollTop = previousScroll.top;
+      }
+      const wiringBoard = root.querySelector('.wiring-board');
+      if (wiringBoard) {
+        wiringBoard.scrollLeft = previousWiringScroll.left;
+        wiringBoard.scrollTop = previousWiringScroll.top;
       }
       
       renderIssues();
