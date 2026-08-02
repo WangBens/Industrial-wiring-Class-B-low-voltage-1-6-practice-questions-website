@@ -190,6 +190,9 @@ const COLS = 12;
       { code: 'LDP', category: '上升沿接點', template: 'LDP X0' },
       { code: 'LDF', category: '下降沿接點', template: 'LDF X0' },
       { code: 'OUT', category: '計時器輸出', template: 'OUT T0 K100' },
+      { code: 'OUT', category: '1ms 累積計時器', template: 'OUT T246 K1000' },
+      { code: 'OUT', category: '100ms 停電保持計時器', template: 'OUT T250 K50' },
+      { code: 'RST', category: '累積計時器復歸', template: 'RST T250' },
       { code: 'OUT', category: '計數器輸出', template: 'OUT C0 K10' },
       { code: 'T0', category: '快捷輸出', template: 'T0 K100' },
       { code: 'C0', category: '快捷輸出', template: 'C0 K10' }
@@ -1025,7 +1028,14 @@ const COLS = 12;
       if (number <= 199) return 100;
       if (number <= 245) return 10;
       if (number <= 249) return 1;
+      if (number <= 255) return 100;
+      if (number <= 511) return 1;
       return 100;
+    }
+
+    function isRetentiveTimer(device) {
+      const number = Number(String(device || '').replace(/^T/i, ''));
+      return Number.isFinite(number) && number >= 246 && number <= 255;
     }
 
     function timerPresetMilliseconds(device, presetToken) {
@@ -1058,7 +1068,8 @@ const COLS = 12;
 
     function initializeDeviceMemoryForRun() {
       const physicalInputs = state.deviceMemory.X || {};
-      state.deviceMemory = { X:physicalInputs, Y:{}, M:{}, S:{}, D:{}, R:{}, T:{}, C:{}, special:createSpecialRelayState() };
+      const retainedTimers = Object.fromEntries(Object.entries(state.deviceMemory.T || {}).filter(([device]) => isRetentiveTimer(device)));
+      state.deviceMemory = { X:physicalInputs, Y:{}, M:{}, S:{}, D:{}, R:{}, T:retainedTimers, C:{}, special:createSpecialRelayState() };
       state.simulator.scanCount = 0;
       state.simulator.elapsedMs = 0;
       state.simulator.lastClockToggleMs = 0;
@@ -1211,7 +1222,7 @@ const COLS = 12;
               state.deviceMemory.C[outComp.device] = counter;
             }
           }
-          if (!isPowerOn && outComp.instruction === 'OUT' && /^T\d+$/.test(outComp.device || '')) {
+          if (!isPowerOn && outComp.instruction === 'OUT' && /^T\d+$/.test(outComp.device || '') && !isRetentiveTimer(outComp.device)) {
             const preset = readWordValue(outComp.args[1]);
             state.deviceMemory.T[outComp.device] = {preset, presetMs:timerPresetMilliseconds(outComp.device, outComp.args[1]), current:0, done:false};
           }
@@ -1259,7 +1270,7 @@ const COLS = 12;
 
       if (/^T\d+$/.test(d)) {
         const t = state.deviceMemory.T[d] || { preset: 0, current: 0, done: false };
-        return `${d}\n類型：Timer（${timerUnitMilliseconds(d)} ms 基準）\n目前值：${t.current} ms\n設定值：${t.preset}（${t.presetMs || 0} ms）\n完成位：${t.done ? 'ON' : 'OFF'}`;
+        return `${d}\n類型：${isRetentiveTimer(d) ? '停電保持／累積 Timer' : '一般 Timer'}（${timerUnitMilliseconds(d)} ms 基準）\n目前值：${t.current} ms\n設定值：${t.preset}（${t.presetMs || 0} ms）\n完成位：${t.done ? 'ON' : 'OFF'}${isRetentiveTimer(d) ? '\n復歸方式：RST 或 ZRST；輸入 OFF 時保留目前值' : ''}`;
       }
 
       if (/^C\d+$/.test(d)) {
@@ -1439,11 +1450,11 @@ const COLS = 12;
 
     function isDeviceX(v) { return /^X[0-7]+$/.test(v); }
     function isDeviceY(v) { return /^Y[0-7]+$/.test(v); }
-    function isDeviceM(v) { return /^M\d+$/.test(v); }
+    function isDeviceM(v) { const match=String(v || '').match(/^M(\d+)$/); if (!match) return false; const n=Number(match[1]); return (n >= 0 && n <= 7679) || (n >= 8000 && n <= 8511); }
     function isDeviceD(v) { return /^D\d+$/.test(v); }
-    function isDeviceT(v) { return /^T\d+$/.test(v); }
-    function isDeviceC(v) { return /^C\d+$/.test(v); }
-    function isDeviceS(v) { return /^S\d+$/.test(v); }
+    function isDeviceT(v) { const match=String(v || '').match(/^T(\d+)$/); return Boolean(match) && Number(match[1]) <= 511; }
+    function isDeviceC(v) { const match=String(v || '').match(/^C(\d+)$/); return Boolean(match) && Number(match[1]) <= 255; }
+    function isDeviceS(v) { const match=String(v || '').match(/^S(\d+)$/); return Boolean(match) && Number(match[1]) <= 4095; }
     function isDeviceR(v) { return /^R\d+$/.test(v); }
     function isDeviceV(v) { return /^V\d+$/.test(v); }
     function isDeviceZ(v) { return /^Z\d+$/.test(v); }
@@ -3578,7 +3589,7 @@ const COLS = 12;
       if (state.practiceStage === 'ladder') {
         const octalNotice = document.createElement('div');
         octalNotice.className = 'octal-address-notice';
-        octalNotice.innerHTML = '<strong>FX3U 裝置規則</strong><span>X／Y 使用八進制；M 為內部輔助電驛、S 為步進狀態、T／C 為計時／計數接點。支援 M8000～M8003、M8011～M8014、M8018、M8020～M8022、M8029 等常用特殊電驛監視。</span>';
+        octalNotice.innerHTML = '<strong>FX3U 裝置規則</strong><span>X／Y 使用八進制；M 為內部輔助電驛、S 為步進狀態、T／C 為計時／計數接點。T246～T249 為 1ms 累積型、T250～T255 為 100ms 停電保持型，須用 RST／ZRST 歸零。支援常用特殊 M8000～M8029 監視。</span>';
         editorArea.appendChild(octalNotice);
       }
 
