@@ -3,6 +3,27 @@ const COLS = 12;
     const FIRST_EDIT_COL = 1;
     const LAST_EDIT_COL = COLS - 1;
     const END_ID = 'END_COMPONENT';
+
+    const SPECIAL_M_DEFINITIONS = Object.freeze({
+      M8000: { name:'RUN 監視常開接點', mode:'run-no' },
+      M8001: { name:'RUN 監視常閉接點', mode:'run-nc' },
+      M8002: { name:'初始脈衝常開接點', mode:'first-no' },
+      M8003: { name:'初始脈衝常閉接點', mode:'first-nc' },
+      M8004: { name:'PLC 錯誤發生', mode:'system' },
+      M8011: { name:'10 ms 時脈', mode:'clock', periodMs:10 },
+      M8012: { name:'100 ms 時脈', mode:'clock', periodMs:100 },
+      M8013: { name:'1 秒時脈', mode:'clock', periodMs:1000 },
+      M8014: { name:'1 分鐘時脈', mode:'clock', periodMs:60000 },
+      M8018: { name:'即時時鐘可用', mode:'always-on' },
+      M8020: { name:'運算結果為零', mode:'arithmetic' },
+      M8021: { name:'運算借位', mode:'arithmetic' },
+      M8022: { name:'運算進位／溢位', mode:'arithmetic' },
+      M8029: { name:'指令執行完成', mode:'execution' }
+    });
+
+    function createSpecialRelayState() {
+      return Object.fromEntries(Object.keys(SPECIAL_M_DEFINITIONS).map((device) => [device, false]));
+    }
     
     const INSTRUCTION_DB = {
       LD: { family: 'CONTACT', arity: 1, category: '接點', supported: true },
@@ -159,6 +180,12 @@ const COLS = 12;
       { code: 'RST', category: '步進復歸', template: 'RST S0' },
       { code: 'RET', category: '步進結束', template: 'RET' },
       { code: 'ZRST', category: '批次復歸', template: 'ZRST S0 S99' },
+      { code: 'M8000', category: '特殊電驛', template: 'M8000' },
+      { code: 'M8002', category: '特殊電驛', template: 'M8002' },
+      { code: 'M8011', category: '特殊電驛', template: 'M8011' },
+      { code: 'M8012', category: '特殊電驛', template: 'M8012' },
+      { code: 'M8013', category: '特殊電驛', template: 'M8013' },
+      { code: 'M8014', category: '特殊電驛', template: 'M8014' },
       { code: 'OP', category: '平行支路', template: 'OP X0' },
       { code: 'LDP', category: '上升沿接點', template: 'LDP X0' },
       { code: 'LDF', category: '下降沿接點', template: 'LDF X0' },
@@ -293,7 +320,7 @@ const COLS = 12;
       },
       deviceMemory: {
         X: {}, Y: {}, M: {}, S: {}, D: {}, R: {}, T: {}, C: {},
-        special: { M8000: true, M8002: true, M8013: false }
+        special: createSpecialRelayState()
       },
       simulator: {
         enabled: false,
@@ -647,6 +674,7 @@ const COLS = 12;
         return;
       }
       state.compileDialogVisible = false;
+      initializeDeviceMemoryForRun();
       state.simulator.enabled = true;
       const simulation = ensurePracticeState().simulation;
       simulation.running = true;
@@ -743,7 +771,7 @@ const COLS = 12;
         }
         runOneScan();
         if (state.simulator.scanCount % 2 === 0) render();
-      }, Math.max(160, state.simulator.scanTimeMs * 2));
+      }, Math.max(40, state.simulator.scanTimeMs));
     }
 
     function simulationInputKind(question, item) {
@@ -915,9 +943,7 @@ const COLS = 12;
     // ===== Simulator & Device Memory =====
     function getDeviceValue(device) {
       const d = String(device || '').toUpperCase();
-      if (d === 'M8000') return Boolean(state.deviceMemory.special.M8000);
-      if (d === 'M8002') return Boolean(state.deviceMemory.special.M8002);
-      if (d === 'M8013') return Boolean(state.deviceMemory.special.M8013);
+      if (Object.prototype.hasOwnProperty.call(SPECIAL_M_DEFINITIONS, d)) return Boolean(state.deviceMemory.special[d]);
 
       if (isDeviceX(d)) return Boolean(state.deviceMemory.X[d]);
       if (isDeviceY(d)) return Boolean(state.deviceMemory.Y[d]);
@@ -925,6 +951,8 @@ const COLS = 12;
       if (/^S\d+$/.test(d)) return Boolean(state.deviceMemory.S[d]);
       if (/^T\d+$/.test(d)) return Boolean(state.deviceMemory.T[d]?.done);
       if (/^C\d+$/.test(d)) return Boolean(state.deviceMemory.C[d]?.done);
+      const wordBit = d.match(/^D(\d+)\.([0-9A-F])$/);
+      if (wordBit) return Boolean((Number(state.deviceMemory.D[`D${wordBit[1]}`] || 0) >>> parseInt(wordBit[2], 16)) & 1);
       if (/^D\d+$/.test(d)) return Number(state.deviceMemory.D[d] || 0);
       if (/^R\d+$/.test(d)) return Number(state.deviceMemory.R[d] || 0);
       return false;
@@ -932,10 +960,18 @@ const COLS = 12;
 
     function setDeviceValue(device, value) {
       const d = String(device || '').toUpperCase();
+      if (Object.prototype.hasOwnProperty.call(SPECIAL_M_DEFINITIONS, d)) return;
       if (isDeviceX(d)) state.deviceMemory.X[d] = Boolean(value);
       else if (isDeviceY(d)) state.deviceMemory.Y[d] = Boolean(value);
       else if (/^M\d+$/.test(d)) state.deviceMemory.M[d] = Boolean(value);
       else if (/^S\d+$/.test(d)) state.deviceMemory.S[d] = Boolean(value);
+      else if (/^D\d+\.[0-9A-F]$/.test(d)) {
+        const [, wordNumber, bitHex] = d.match(/^D(\d+)\.([0-9A-F])$/);
+        const wordDevice = `D${wordNumber}`;
+        const bit = parseInt(bitHex, 16);
+        const current = Number(state.deviceMemory.D[wordDevice] || 0) & 0xFFFF;
+        state.deviceMemory.D[wordDevice] = value ? (current | (1 << bit)) : (current & ~(1 << bit));
+      }
       else if (/^D\d+$/.test(d)) state.deviceMemory.D[d] = Number(value) || 0;
       else if (/^R\d+$/.test(d)) state.deviceMemory.R[d] = Number(value) || 0;
       else if (/^T\d+$/.test(d)) {
@@ -983,6 +1019,54 @@ const COLS = 12;
       return 0;
     }
 
+    function timerUnitMilliseconds(device) {
+      const number = Number(String(device || '').replace(/^T/i, ''));
+      if (!Number.isFinite(number)) return 100;
+      if (number <= 199) return 100;
+      if (number <= 245) return 10;
+      if (number <= 249) return 1;
+      return 100;
+    }
+
+    function timerPresetMilliseconds(device, presetToken) {
+      return Math.max(0, readWordValue(presetToken)) * timerUnitMilliseconds(device);
+    }
+
+    function refreshSpecialRelays() {
+      const firstScan = state.simulator.scanCount === 1;
+      const elapsed = state.simulator.elapsedMs;
+      const clockPulse = (periodMs) => {
+        if (state.simulator.scanTimeMs >= periodMs) return state.simulator.scanCount % 2 === 1;
+        return Math.floor(elapsed / (periodMs / 2)) % 2 === 1;
+      };
+      state.deviceMemory.special.M8000 = true;
+      state.deviceMemory.special.M8001 = false;
+      state.deviceMemory.special.M8002 = firstScan;
+      state.deviceMemory.special.M8003 = !firstScan;
+      state.deviceMemory.special.M8011 = clockPulse(10);
+      state.deviceMemory.special.M8012 = clockPulse(100);
+      state.deviceMemory.special.M8013 = clockPulse(1000);
+      state.deviceMemory.special.M8014 = clockPulse(60000);
+      state.deviceMemory.special.M8018 = true;
+    }
+
+    function updateArithmeticFlags(result, operation, a = 0, b = 0) {
+      state.deviceMemory.special.M8020 = Number(result) === 0;
+      state.deviceMemory.special.M8021 = operation === 'SUB' && Number(a) - Number(b) < -32768;
+      state.deviceMemory.special.M8022 = Number(result) > 32767 || Number(result) < -32768;
+    }
+
+    function initializeDeviceMemoryForRun() {
+      const physicalInputs = state.deviceMemory.X || {};
+      state.deviceMemory = { X:physicalInputs, Y:{}, M:{}, S:{}, D:{}, R:{}, T:{}, C:{}, special:createSpecialRelayState() };
+      state.simulator.scanCount = 0;
+      state.simulator.elapsedMs = 0;
+      state.simulator.lastClockToggleMs = 0;
+      state.simulator.previousPower = {};
+      state.simulator.previousInputs = {};
+      refreshSpecialRelays();
+    }
+
     function evalComponentCondition(component) {
       if (!component) return false;
       if (component.kind === 'CONTACT') {
@@ -1023,9 +1107,8 @@ const COLS = 12;
       state.simulator.scanCount = 0;
       state.simulator.elapsedMs = 0;
       state.simulator.lastClockToggleMs = 0;
-      state.deviceMemory.special.M8000 = true;
-      state.deviceMemory.special.M8002 = true;
-      state.deviceMemory.special.M8013 = false;
+      state.deviceMemory.special = createSpecialRelayState();
+      refreshSpecialRelays();
       state.simulator.report = [];
       state.simulator.previousPower = {};
       state.simulator.previousInputs = {};
@@ -1043,13 +1126,8 @@ const COLS = 12;
 
       state.simulator.scanCount += 1;
       state.simulator.elapsedMs += state.simulator.scanTimeMs;
-      state.deviceMemory.special.M8000 = true;
-      state.deviceMemory.special.M8002 = state.simulator.scanCount === 1;
-
-      if (state.simulator.elapsedMs - state.simulator.lastClockToggleMs >= 1000) {
-        state.deviceMemory.special.M8013 = !state.deviceMemory.special.M8013;
-        state.simulator.lastClockToggleMs = state.simulator.elapsedMs;
-      }
+      refreshSpecialRelays();
+      state.deviceMemory.special.M8029 = false;
 
       const nodeGraph = buildNodeLevelGraph();
       const allOutputs = Object.values(state.components)
@@ -1058,7 +1136,7 @@ const COLS = 12;
 
       allOutputs.forEach(outComp => {
         const expr = extractOutputExpr(nodeGraph, outComp);
-        const isPowerOn = evalExpr(expr);
+        const isPowerOn = outComp.unconditional ? true : evalExpr(expr);
         const wasPowerOn = Boolean(state.simulator.previousPower[outComp.id]);
         const rising = isPowerOn && !wasPowerOn;
         const falling = !isPowerOn && wasPowerOn;
@@ -1084,10 +1162,15 @@ const COLS = 12;
                 : baseInstruction === 'MUL' ? a * b
                 : (b === 0 ? 0 : Math.trunc(a / b));
               setDeviceValue(outComp.args[2], result);
+              updateArithmeticFlags(result, baseInstruction, a, b);
             } else if (baseInstruction === 'INC') {
-              setDeviceValue(outComp.args[0], readWordValue(outComp.args[0]) + 1);
+              const result = readWordValue(outComp.args[0]) + 1;
+              setDeviceValue(outComp.args[0], result);
+              updateArithmeticFlags(result, 'INC');
             } else if (baseInstruction === 'DEC') {
-              setDeviceValue(outComp.args[0], readWordValue(outComp.args[0]) - 1);
+              const result = readWordValue(outComp.args[0]) - 1;
+              setDeviceValue(outComp.args[0], result);
+              updateArithmeticFlags(result, 'DEC');
             } else if (baseInstruction === 'ZRST') {
               deviceRange(outComp.args[0], outComp.args[1]).forEach((device) => setDeviceValue(device, 0));
             } else if (baseInstruction === 'BMOV') {
@@ -1112,10 +1195,12 @@ const COLS = 12;
               setDeviceValue(outComp.args[0], !getDeviceValue(outComp.args[0]));
             } else if (outComp.instruction === 'OUT' && /^T\d+$/.test(outComp.device || '')) {
               const preset = readWordValue(outComp.args[1]);
-              const timer = state.deviceMemory.T[outComp.device] || { preset, current: 0, done: false };
+              const presetMs = timerPresetMilliseconds(outComp.device, outComp.args[1]);
+              const timer = state.deviceMemory.T[outComp.device] || { preset, presetMs, current: 0, done: false };
               timer.preset = preset;
+              timer.presetMs = presetMs;
               timer.current += state.simulator.scanTimeMs;
-              timer.done = timer.current >= preset;
+              timer.done = timer.current >= presetMs;
               state.deviceMemory.T[outComp.device] = timer;
             } else if (outComp.instruction === 'OUT' && /^C\d+$/.test(outComp.device || '') && rising) {
               const preset = readWordValue(outComp.args[1]);
@@ -1128,7 +1213,7 @@ const COLS = 12;
           }
           if (!isPowerOn && outComp.instruction === 'OUT' && /^T\d+$/.test(outComp.device || '')) {
             const preset = readWordValue(outComp.args[1]);
-            state.deviceMemory.T[outComp.device] = {preset, current:0, done:false};
+            state.deviceMemory.T[outComp.device] = {preset, presetMs:timerPresetMilliseconds(outComp.device, outComp.args[1]), current:0, done:false};
           }
         }
         state.simulator.previousPower[outComp.id] = isPowerOn;
@@ -1136,7 +1221,7 @@ const COLS = 12;
 
       syncMachineAnimationFromPlc(activeQuestion(), ensurePracticeState().simulation);
 
-      state.deviceMemory.special.M8002 = false;
+      state.deviceMemory.special.M8029 = true;
       Object.values(state.components).filter((component) => component.kind === 'CONTACT').forEach((component) => {
         const raw = getDeviceValue(component.device);
         state.simulator.previousInputs[component.id] = component.polarity === 'INVERSE' ? !raw : Boolean(raw);
@@ -1148,7 +1233,10 @@ const COLS = 12;
         `Elapsed Time: ${state.simulator.elapsedMs} ms`,
         `M8000 (RUN): ON`,
         `M8002 (第一掃描): ${state.simulator.scanCount === 1 ? 'ON' : 'OFF'}`,
-        `M8013 (1秒時脈): ${state.deviceMemory.special.M8013 ? 'ON' : 'OFF'}`
+        `M8011 (10ms時脈): ${state.deviceMemory.special.M8011 ? 'ON' : 'OFF'}`,
+        `M8012 (100ms時脈): ${state.deviceMemory.special.M8012 ? 'ON' : 'OFF'}`,
+        `M8013 (1秒時脈): ${state.deviceMemory.special.M8013 ? 'ON' : 'OFF'}`,
+        `M8014 (1分時脈): ${state.deviceMemory.special.M8014 ? 'ON' : 'OFF'}`
       ];
       if (dom.testReportBox) dom.testReportBox.textContent = state.simulator.report.join('\n');
       return true;
@@ -1159,9 +1247,7 @@ const COLS = 12;
       const d = String(device || '').trim().toUpperCase();
       if (!d) return '請輸入裝置，例如 D0、M0、Y0、T0、C0、M8000';
 
-      if (d === 'M8000') return `M8000\n類型：特殊輔助電驛\n說明：RUN 中常 ON\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}`;
-      if (d === 'M8002') return `M8002\n類型：特殊輔助電驛\n說明：第一掃描 ON\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}`;
-      if (d === 'M8013') return `M8013\n類型：特殊輔助電驛\n說明：1 秒時脈\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}`;
+      if (SPECIAL_M_DEFINITIONS[d]) return `${d}\n類型：FX3U 特殊輔助電驛\n說明：${SPECIAL_M_DEFINITIONS[d].name}\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}\n屬性：CPU 管理／唯讀監視`;
 
       if (/^[XY]\d+$/.test(d) && !isDeviceX(d) && !isDeviceY(d)) return `${d}\n位址錯誤：X／Y 只能使用八進制數字 0～7。\n例如 X7 的下一點是 X10，Y17 的下一點是 Y20。`;
       if (isDeviceX(d)) return `${d}\n類型：輸入 X（八進制位址）\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}`;
@@ -1173,7 +1259,7 @@ const COLS = 12;
 
       if (/^T\d+$/.test(d)) {
         const t = state.deviceMemory.T[d] || { preset: 0, current: 0, done: false };
-        return `${d}\n類型：Timer\n目前值：${t.current}\n設定值：${t.preset}\n完成位：${t.done ? 'ON' : 'OFF'}`;
+        return `${d}\n類型：Timer（${timerUnitMilliseconds(d)} ms 基準）\n目前值：${t.current} ms\n設定值：${t.preset}（${t.presetMs || 0} ms）\n完成位：${t.done ? 'ON' : 'OFF'}`;
       }
 
       if (/^C\d+$/.test(d)) {
@@ -1362,7 +1448,13 @@ const COLS = 12;
     function isDeviceV(v) { return /^V\d+$/.test(v); }
     function isDeviceZ(v) { return /^Z\d+$/.test(v); }
     function isDeviceTC(v) { return /^TC\d+$/.test(v); }
-    function isSpecialM(v) { return /^M8\d{3}$/.test(v); }
+    function isSpecialM(v) {
+      const match = String(v || '').match(/^M(\d+)$/);
+      if (!match) return false;
+      const number = Number(match[1]);
+      return number >= 8000 && number <= 8511;
+    }
+    function isWordBitDevice(v) { return /^D\d+\.[0-9A-F]$/.test(v); }
     function isConstK(v) { return /^K-?\d+$/.test(v); }
     function isConstH(v) { return /^H[0-9A-F]+$/.test(v); }
 
@@ -1371,11 +1463,11 @@ const COLS = 12;
     }
 
     function isContactDevice(v) {
-      return isDeviceX(v) || isDeviceY(v) || isDeviceM(v) || isDeviceS(v) || isDeviceT(v) || isDeviceC(v) || isSpecialM(v);
+      return isDeviceX(v) || isDeviceY(v) || isDeviceM(v) || isDeviceS(v) || isDeviceT(v) || isDeviceC(v) || isSpecialM(v) || isWordBitDevice(v);
     }
 
     function isCoilDevice(v) {
-      return isDeviceY(v) || isDeviceM(v) || isDeviceS(v) || isDeviceT(v) || isDeviceC(v);
+      return isDeviceY(v) || (isDeviceM(v) && !isSpecialM(v)) || isDeviceS(v) || isDeviceT(v) || isDeviceC(v);
     }
 
     function validateOperand(rawToken, accepted, allowLabel = true) {
@@ -1435,7 +1527,7 @@ const COLS = 12;
       if (/^E-?\d+(?:\.\d+)?$/.test(token)) return { ok:true, value:token };
       if (/^(?:K-?\d+|H[0-9A-F]+)$/.test(token)) return { ok:true, value:token };
       if (/^K[1-8](?:X[0-7]+|Y[0-7]+|M\d+|S\d+)$/.test(token)) return { ok:true, value:token };
-      if (/^(?:X[0-7]+|Y[0-7]+|M\d+|S\d+|T\d+|C\d+|D\d+|R\d+|V\d+|Z\d+|P\d+|I\d+|N\d+)(?:[VZ]\d+)?(?:\.\d+)?$/.test(token)) return { ok:true, value:token };
+      if (/^(?:X[0-7]+|Y[0-7]+|M\d+|S\d+|T\d+|C\d+|D\d+|R\d+|V\d+|Z\d+|P\d+|I\d+|N\d+)(?:[VZ]\d+)?(?:\.[0-9A-F])?$/.test(token)) return { ok:true, value:token };
       if (/^U[0-9A-F]+\\G\d+$/.test(token)) return { ok:true, value:token };
       if (/^@[DR]\d+$/.test(token)) return { ok:true, value:token };
       if (/^[A-Z_$][A-Z0-9_.$:+\-]*$/.test(token)) return { ok:true, value:token };
@@ -1498,11 +1590,26 @@ const COLS = 12;
         return { kind:'CONTACT', display:`STL ${rest[0]}`, device:rest[0], instruction:'STL', args:[rest[0]], span:1, output:false, polarity:'NORMAL', step:true, simulated:true };
       }
 
-      if (/^\/(X|M|T|C)\d+$/.test(first)) {
+      if (first === 'RET') {
+        if (rest.length) return { error:'RET 不接受參數。', code:'E331', suggestion:'請單獨輸入 RET，作為步進梯形圖區段結束。' };
+        return { kind:'FUNCTION', display:'RET', instruction:'RET', args:[], span:2, output:true, alignRight:true, unconditional:true, simulated:true, fx3u:true };
+      }
+
+      if (first === 'ZRST') {
+        if (rest.length !== 2) return { error:'ZRST 需要起點與終點兩個參數，例如 ZRST S0 S99。', code:'E331', suggestion:'請輸入 ZRST S0 S99、ZRST M0 M99 或 ZRST D0 D99。' };
+        const range = deviceRange(rest[0], rest[1]);
+        if (!range.length || !/^(?:Y|M|S|T|C|D|R)\d+$/.test(rest[0]) || isSpecialM(rest[0]) || isSpecialM(rest[1])) {
+          return { error:`ZRST 範圍不合法：${rest.join(' ')}。`, code:'E337', suggestion:'起點與終點必須是相同類型、由小到大的 Y／一般 M／S／T／C／D／R 裝置。' };
+        }
+        return { kind:'FUNCTION', display:`ZRST ${rest[0]} ${rest[1]}`, instruction:'ZRST', baseInstruction:'ZRST', args:[rest[0],rest[1]], span:3, output:true, alignRight:true, simulated:true, fx3u:true };
+      }
+
+      if (/^\/(X|Y|M|S|T|C)\d+$/.test(first) || /^\/D\d+\.[0-9A-F]$/.test(first)) {
         return { kind: 'CONTACT', display: first, device: first.slice(1), instruction: 'LDI', args: [first.slice(1)], span: 1, output: false, polarity: 'INVERSE' };
       }
 
       if (isDeviceY(first)) {
+        if (forceNcContact) return { kind:'CONTACT', display:`LDI ${first}`, device:first, instruction:'LDI', args:[first], span:1, output:false, polarity:'INVERSE' };
         return { kind: 'COIL', display: first, device: first, instruction: 'OUT', args: [first], span: 1, output: true, polarity: 'NORMAL' };
       }
 
@@ -1516,9 +1623,9 @@ const COLS = 12;
         return { kind: 'CONTACT', display: first, device: first, instruction: 'LD', args: [first], span: 1, output: false, polarity: 'NORMAL' };
       }
 
-      if (isDeviceX(first) || isDeviceM(first)) {
+      if (isDeviceX(first) || isDeviceM(first) || isDeviceS(first) || isWordBitDevice(first)) {
         if (rest.length > 0) return { error: `${first} 不接受額外參數。`, code: 'E024', suggestion: '請刪除多餘參數，或改用功能指令。' };
-        if (forceCoil && isDeviceX(first)) return { error: 'X 裝置不可作為輸出線圈。', code: 'E210', suggestion: '請改用 Y 或 M 裝置。' };
+        if (forceCoil && (isDeviceX(first) || isWordBitDevice(first) || isSpecialM(first))) return { error: `${first} 為唯讀接點，不可作為輸出線圈。`, code: 'E210', suggestion: '請改用 Y、一般 M 或 S 裝置。' };
         if (forceCoil && !isCoilDevice(first)) return { error: '此裝置不可作為輸出線圈。', code: 'E211', suggestion: '請使用 Y0 或 M0。' };
         if (forceCoil) return { kind: 'COIL', display: first, device: first, instruction: 'OUT', args: [first], span: 1, output: true, polarity: 'NORMAL' };
         return { kind: 'CONTACT', display: forceNcContact ? `LDI ${first}` : first, device: first, instruction: forceNcContact ? 'LDI' : 'LD', args: [first], span: 1, output: false, polarity: forceNcContact ? 'INVERSE' : 'NORMAL' };
@@ -1574,11 +1681,14 @@ const COLS = 12;
 
       if (first === 'OUT' || first === 'SET' || first === 'RST' || first === 'PLS' || first === 'PLF') {
         if (rest.length !== 1) return { error: `錯誤：${first} 指令需要 1 個輸出裝置，例如 ${first} Y0。`, code: 'E003', suggestion: '請輸入 OUT Y0 或 OUT M0。' };
+        if (isSpecialM(rest[0])) return { error:`${rest[0]} 是 CPU 管理的特殊輔助電驛，不能作為 ${first} 的寫入目標。`, code:'E215', suggestion:'M8000～M8511 請作為監視接點使用；輸出請使用一般 M、S 或 Y。' };
         const accepted = first === 'RST' ? ['COIL', 'CONTACT'] : ['COIL'];
         const op = validateOperand(rest[0], accepted);
         if (!op.ok && op.code === 'E305') return op;
         if (!op.ok) return { error: `錯誤：${first} 裝置型別不合法。`, code: 'E212', suggestion: first === 'RST' ? 'RST 可使用 Y/M/S/T/C。' : '請改用 Y 或 M 裝置。' };
-        if (isDeviceX(op.value) || isDeviceD(op.value)) return { error: `${first} 參數不合法：${op.value}。`, code: 'E213', suggestion: first === 'RST' ? 'RST 不可接 X 或 D。' : `${first} 只能接 Y/M 裝置。` };
+        if (isSpecialM(op.value)) return { error:`${op.value} 是 CPU 管理的特殊輔助電驛，不能作為 ${first} 的寫入目標。`, code:'E215', suggestion:'M8000～M8511 請作為監視接點使用；輸出請使用一般 M、S 或 Y。' };
+        if (isDeviceX(op.value) || isDeviceD(op.value)) return { error: `${first} 參數不合法：${op.value}。`, code: 'E213', suggestion: first === 'RST' ? 'RST 不可接 X 或 D。' : `${first} 只能接 Y/M/S 裝置。` };
+        if (first !== 'RST' && (isDeviceT(op.value) || isDeviceC(op.value))) return { error:`${first} 不可直接寫入 ${op.value}。`, code:'E216', suggestion:'T／C 請使用 OUT T0 K50、OUT C0 K10；復歸則使用 RST T0／RST C0。' };
         return { kind: 'COIL', display: `${first} ${op.value}`, device: op.value, instruction: first, args: [op.value], span: 1, output: true, polarity: 'NORMAL' };
       }
 
@@ -1921,6 +2031,7 @@ const COLS = 12;
         doubleWord: Boolean(parsed.doubleWord),
         simulated: parsed.simulated !== false,
         step: Boolean(parsed.step),
+        unconditional: Boolean(parsed.unconditional),
         display: parsed.display,
         originText: parsed.display,
         slots: [parsed.instruction || '', ...(parsed.args || [])]
@@ -3003,7 +3114,7 @@ const COLS = 12;
         if (component.kind === 'END') return;
         const cells = Array.from({length:component.span || 1}, (_,i) => getCell(component.row, component.startCol + i)).filter(Boolean);
         const connected = cells.some(cell => cell.wires.left || cell.wires.right || cell.wires.up || cell.wires.down);
-        if (!connected) {
+        if (!connected && !component.unconditional) {
           addIssue({ code:'E115', message:`未連接的元件：${component.display || component.instruction}。`, row:component.row, col:component.startCol, suggestion:'請將元件接到左母線與有效輸出路徑。' });
         }
       });
@@ -3052,10 +3163,10 @@ const COLS = 12;
         const expr = extractOutputExpr(nodeGraph, outComp);
         const rowInfo = { row: outComp.row, output: outComp.device || outComp.instruction, resultLines: [] };
 
-        if (expr === null && outComp.kind === 'COIL') {
+        if (expr === null && outComp.kind === 'COIL' && !outComp.unconditional) {
           addIssue({ code: 'E110', message: '輸出線圈左側沒有有效條件或連線。', row: outComp.row, col: outComp.startCol, suggestion: '請從 BUS 建立有效導通路徑。' });
         }
-        if (expr === null && outComp.output) {
+        if (expr === null && outComp.output && !outComp.unconditional) {
           addIssue({ code: 'E240', message: '功能輸出方塊左側沒有有效條件。', row: outComp.row, col: outComp.startCol, suggestion: '請先放置接點或比較方塊並拉線。' });
         }
 
@@ -3070,7 +3181,7 @@ const COLS = 12;
 
         const outLine = outComp.kind === 'COIL'
           ? `${outComp.instruction || 'OUT'} ${outComp.device}`
-          : `${outComp.instruction} ${outComp.args.join(' ')}`;
+          : [outComp.instruction, ...outComp.args].join(' ');
         lines.push(outLine);
         rowInfo.resultLines.push(outLine);
 
@@ -3467,7 +3578,7 @@ const COLS = 12;
       if (state.practiceStage === 'ladder') {
         const octalNotice = document.createElement('div');
         octalNotice.className = 'octal-address-notice';
-        octalNotice.innerHTML = '<strong>X／Y 使用八進制位址</strong><span>合法：X0～X7、X10～X17、Y0～Y7、Y10～Y17。輸入 X8、Y9、Y18 等位址會立即阻止並提示。</span>';
+        octalNotice.innerHTML = '<strong>FX3U 裝置規則</strong><span>X／Y 使用八進制；M 為內部輔助電驛、S 為步進狀態、T／C 為計時／計數接點。支援 M8000～M8003、M8011～M8014、M8018、M8020～M8022、M8029 等常用特殊電驛監視。</span>';
         editorArea.appendChild(octalNotice);
       }
 
@@ -3558,20 +3669,16 @@ const COLS = 12;
               }
               symbol.appendChild(chip);
               const text = document.createElement('div');
-              text.textContent = component.device;
-              text.style.position = 'absolute';
-              text.style.top = '2px';
-              text.style.fontSize = '10px';
-              text.style.background = 'white';
-              text.style.padding = '0 2px';
+              text.className = 'instruction-label';
+              text.textContent = component.instruction === 'STL' ? component.display : component.device;
               symbol.appendChild(text);
               div.appendChild(symbol);
             } else if (component.kind === 'COIL') {
               const symbol = document.createElement('div');
               symbol.className = 'symbol';
               const chip = document.createElement('div');
-              chip.className = 'coil-chip';
-              chip.textContent = component.device;
+              chip.className = `coil-chip${component.instruction !== 'OUT' ? ' instruction-coil' : ''}`;
+              chip.textContent = component.instruction === 'OUT' && component.display === component.device ? component.device : component.display;
               symbol.appendChild(chip);
               div.appendChild(symbol);
             } else if (component.kind === 'FUNCTION' || component.kind === 'COMPARE') {
