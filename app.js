@@ -21,8 +21,25 @@ const COLS = 12;
       M8029: { name:'指令執行完成', mode:'execution' }
     });
 
+    const SPECIAL_D_DEFINITIONS = Object.freeze({
+      D8010: { name:'目前掃描時間（0.1 ms）', mode:'scan-current' },
+      D8011: { name:'最短掃描時間（0.1 ms）', mode:'scan-min' },
+      D8012: { name:'最長掃描時間（0.1 ms）', mode:'scan-max' },
+      D8013: { name:'即時時鐘－秒', mode:'clock-second' },
+      D8014: { name:'即時時鐘－分', mode:'clock-minute' },
+      D8015: { name:'即時時鐘－時', mode:'clock-hour' },
+      D8016: { name:'即時時鐘－日', mode:'clock-day' },
+      D8017: { name:'即時時鐘－月', mode:'clock-month' },
+      D8018: { name:'即時時鐘－年', mode:'clock-year' },
+      D8019: { name:'即時時鐘－星期', mode:'clock-weekday' }
+    });
+
     function createSpecialRelayState() {
       return Object.fromEntries(Object.keys(SPECIAL_M_DEFINITIONS).map((device) => [device, false]));
+    }
+
+    function createSpecialRegisterState() {
+      return Object.fromEntries(Object.keys(SPECIAL_D_DEFINITIONS).map((device) => [device, 0]));
     }
     
     const INSTRUCTION_DB = {
@@ -218,6 +235,20 @@ const COLS = 12;
         brief: ['手動交替、自動交替、緊急抽水三模式', '蓄水池與水塔高低水位連鎖', 'HMI 操作、過載備援與交替記憶'],
         inputs: [['PB1','警報 OFF'],['PB2','手動操作'],['EMS','緊急停止'],['COS0','手動交替'],['COS1','自動交替'],['COS2','緊急抽水'],['SUMP_L','蓄水池低水位'],['TANK_L','水塔低水位'],['TANK_H','水塔高水位'],['TH1','#1 過載'],['TH2','#2 過載']],
         outputs: [['MC1','#1 抽水機'],['MC2','#2 抽水機'],['PL1','#1 運轉'],['PL2','#2 運轉'],['PL3','#1 過載'],['PL4','#2 過載'],['PL5','允許抽水'],['PL6','水塔缺水'],['BZ','過載警報']],
+        hmiRegisterNote: '試題規定 HMI 功能但未指定 PLC 位址；下列為本站練習配置。',
+        hmiDevices: [
+          {device:'D200',label:'HMI COS 模式（0手動／1自動／2緊急）',kind:'word',access:'rw',default:0,retain:true,group:'操作'},
+          {device:'M200',label:'HMI 警報 OFF（PB1）',kind:'bit',access:'write',control:'momentary',group:'操作'},
+          {device:'M201',label:'HMI 手動操作（PB2）',kind:'bit',access:'write',control:'momentary',group:'操作'},
+          {device:'M210',label:'EMS 動作指示',kind:'bit',access:'read',group:'顯示'},
+          {device:'M211',label:'#1 抽水機／PL1',kind:'bit',access:'read',group:'顯示'},
+          {device:'M212',label:'#2 抽水機／PL2',kind:'bit',access:'read',group:'顯示'},
+          {device:'M213',label:'#1 過載／PL3',kind:'bit',access:'read',group:'顯示'},
+          {device:'M214',label:'#2 過載／PL4',kind:'bit',access:'read',group:'顯示'},
+          {device:'M215',label:'蓄水池允許抽水／PL5',kind:'bit',access:'read',group:'顯示'},
+          {device:'M216',label:'水塔缺水／PL6',kind:'bit',access:'read',group:'顯示'}
+        ],
+        specialDevices: ['M8000','M8002','M8013','D8010','D8013','D8014'],
         rubric: [['modes','三模式','手動／自動交替與緊急抽水皆可執行',30],['levels','水位連鎖','上下水位切換與缺水禁止正確',25],['alternate','交替記憶','重啟後交替順序符合評分表',20],['wiring','外部接線','I/O 與 HMI/實體元件定義完整',25]]
       },
       {
@@ -225,6 +256,40 @@ const COLS = 12;
         brief: ['單步、連續、定點設定三種模式', 'MPG 手搖輪倍率 ×1／×10／×100', '原點復歸、三定位點與速度／停留時間參數'],
         inputs: [['START','啟動'],['STOP','停止'],['HOME','原點復歸'],['SAVE','位置儲存'],['JOG_P','JOG+'],['JOG_N','JOG-'],['COS1_0','單步模式'],['COS1_1','連續模式'],['COS1_2','定點設定'],['COS2_1','MPG ×1'],['COS2_10','MPG ×10'],['COS2_100','MPG ×100'],['EMS','緊急停止'],['ORG','原點感測'],['LSP','右極限'],['LSN','左極限']],
         outputs: [['MC1','伺服電源'],['PULSE','脈波輸出'],['DIR','方向輸出'],['HMI_POS','目前位置'],['HMI_MODE','模式顯示']],
+        hmiRegisterNote: '依試題「人機介面／PLC 對應暫存器規劃範例」建立；DR 為雙字 R 暫存器。',
+        hmiDevices: [
+          {device:'R100',label:'寸動進給速度（rpm）',kind:'word',access:'rw',default:150,retain:true,group:'寸動設定'},
+          {device:'DR104',label:'寸動進給輸出頻率（kHz）',kind:'double',access:'read',group:'寸動設定'},
+          {device:'R102',label:'連續進給速度（rpm）',kind:'word',access:'rw',default:300,retain:true,group:'寸動設定'},
+          {device:'DR106',label:'連續進給輸出頻率（kHz）',kind:'double',access:'read',group:'寸動設定'},
+          {device:'R108',label:'連續進給時間 TC（秒）',kind:'word',access:'rw',default:3,retain:true,group:'寸動設定'},
+          {device:'M100',label:'移動量切換鍵',kind:'bit',access:'write',control:'momentary',group:'寸動設定'},
+          {device:'R110',label:'寸動進給移動量（mm）',kind:'word',access:'read',default:5,group:'寸動設定'},
+          {device:'R109',label:'模式顯示',kind:'word',access:'read',group:'位置設定'},
+          {device:'R124',label:'目前位置（mm）',kind:'word',access:'read',group:'位置設定'},
+          {device:'R120',label:'滑台 A（mm）',kind:'word',access:'read',group:'位置設定'},
+          {device:'R121',label:'滑台 B（mm）',kind:'word',access:'read',group:'位置設定'},
+          {device:'R122',label:'滑台 C（mm）',kind:'word',access:'read',group:'位置設定'},
+          {device:'R123',label:'滑台 D（mm）',kind:'word',access:'read',group:'位置設定'},
+          {device:'R135',label:'停留時間 A／T0（秒）',kind:'word',access:'rw',default:2,retain:true,group:'位置設定'},
+          {device:'R136',label:'停留時間 B／T1（秒）',kind:'word',access:'rw',default:2,retain:true,group:'位置設定'},
+          {device:'R137',label:'停留時間 C／T2（秒）',kind:'word',access:'rw',default:2,retain:true,group:'位置設定'},
+          {device:'R138',label:'停留時間 D／T3（秒）',kind:'word',access:'rw',default:2,retain:true,group:'位置設定'},
+          {device:'R141',label:'速度 SP1（rpm）',kind:'word',access:'rw',default:120,retain:true,group:'位置設定'},
+          {device:'R142',label:'速度 SP2（rpm）',kind:'word',access:'rw',default:160,retain:true,group:'位置設定'},
+          {device:'R143',label:'速度 SP3（rpm）',kind:'word',access:'rw',default:200,retain:true,group:'位置設定'},
+          {device:'M101',label:'START',kind:'bit',access:'write',control:'momentary',group:'HMI 按鈕'},
+          {device:'M102',label:'STOP',kind:'bit',access:'write',control:'momentary',group:'HMI 按鈕'},
+          {device:'M103',label:'原點 HOME',kind:'bit',access:'write',control:'momentary',group:'HMI 按鈕'},
+          {device:'M104',label:'儲存 SAVE',kind:'bit',access:'write',control:'momentary',group:'HMI 按鈕'},
+          {device:'M111',label:'JOG+',kind:'bit',access:'write',control:'momentary',group:'HMI 按鈕'},
+          {device:'M112',label:'JOG-',kind:'bit',access:'write',control:'momentary',group:'HMI 按鈕'},
+          {device:'M190',label:'A 位置閃爍',kind:'bit',access:'read',group:'位置閃爍'},
+          {device:'M191',label:'B 位置閃爍',kind:'bit',access:'read',group:'位置閃爍'},
+          {device:'M192',label:'C 位置閃爍',kind:'bit',access:'read',group:'位置閃爍'},
+          {device:'M193',label:'D 位置閃爍',kind:'bit',access:'read',group:'位置閃爍'}
+        ],
+        specialDevices: ['M8000','M8002','M8029','D8010','D8011','D8012','D8013','D8014','D8015'],
         rubric: [['homing','原點復歸','回原點方向、完成與顯示正確',25],['teach','教導設定','A/B/C 點可儲存且參數換算正確',25],['motion','單步／連續','速度、方向、停留與循環正確',30],['wiring','外部接線','極限、EMS 與伺服訊號配置完整',20]]
       },
       {
@@ -232,6 +297,22 @@ const COLS = 12;
         brief: ['手動／自動秤重，切斷值可設定', '5 秒關門、15 秒殘料排除與 3 秒循環', 'LT1～LT3 位準、荷重元與緊急停止處理'],
         inputs: [['LT1','高位準'],['LT2','中位準'],['LT3','低位準'],['COS4_0','停止'],['COS4_1','手動'],['COS4_2','自動'],['COS5','BZ 停'],['PB1','自動計量'],['PB2','手動計量'],['PB3','手動出料'],['PB4','緊急停止'],['LS_G','閘門閉合'],['LOAD','荷重值']],
         outputs: [['MC1','下料馬達'],['MC2','出料閘門'],['PL1','下料中'],['PL2','出料中'],['PL3','警報'],['BZ','蜂鳴器'],['DISPLAY','計量顯示']],
+        hmiRegisterNote: '試題要求 HMI 與 PLC 連線，但未指定 PLC 位址；重量值皆以 0.1 kg 為一單位。',
+        hmiDevices: [
+          {device:'D300',label:'設定值（0.1 kg）',kind:'word',access:'rw',default:1000,retain:true,group:'重量資料'},
+          {device:'D301',label:'目前計量值（0.1 kg）',kind:'word',access:'read',group:'重量資料'},
+          {device:'D302',label:'自動補償值（0.1 kg）',kind:'word',access:'read',group:'重量資料'},
+          {device:'D303',label:'切斷值（0.1 kg）',kind:'word',access:'read',group:'重量資料'},
+          {device:'M300',label:'HMI 自動計量／START',kind:'bit',access:'write',control:'momentary',group:'操作'},
+          {device:'M301',label:'HMI 手動計量',kind:'bit',access:'write',control:'momentary',group:'操作'},
+          {device:'M302',label:'HMI 手動出料',kind:'bit',access:'write',control:'momentary',group:'操作'},
+          {device:'M303',label:'HMI BZ 停止',kind:'bit',access:'write',control:'momentary',group:'操作'},
+          {device:'M310',label:'下料中／PL1',kind:'bit',access:'read',group:'顯示'},
+          {device:'M311',label:'出料中／PL2',kind:'bit',access:'read',group:'顯示'},
+          {device:'M312',label:'警報／PL3',kind:'bit',access:'read',group:'顯示'},
+          {device:'M313',label:'蜂鳴器 BZ',kind:'bit',access:'read',group:'顯示'}
+        ],
+        specialDevices: ['M8000','M8002','M8013','D8010','D8013','D8014'],
         rubric: [['weigh','秤重切斷','重量與切斷值比較正確',30],['cycle','自動循環','下料、延時、出料與重複次數正確',30],['recovery','異常復歸','EMS、斷電與殘料復歸正確',20],['wiring','外部接線','類比量與數位 I/O 定義完整',20]]
       },
       {
@@ -323,7 +404,8 @@ const COLS = 12;
       },
       deviceMemory: {
         X: {}, Y: {}, M: {}, S: {}, D: {}, R: {}, T: {}, C: {},
-        special: createSpecialRelayState()
+        special: createSpecialRelayState(),
+        specialD: createSpecialRegisterState()
       },
       simulator: {
         enabled: false,
@@ -729,6 +811,7 @@ const COLS = 12;
 
     function syncMachineAnimationFromPlc(question, sim) {
       if (!state.compile.passed || !state.simulator.enabled) return;
+      initializeQuestionHmiDevices(question);
       const writeInput = (id, value) => {
         const address = ensurePracticeState(question.id).wiring[id];
         if (isDeviceX(address || '')) setDeviceValue(address, value);
@@ -740,9 +823,18 @@ const COLS = 12;
         writeInput('LSP', sim.position >= 84);
         writeInput('LSN', sim.position <= 6);
       }
+      if (question.id === 3) setDeviceValue('R124', Math.round(sim.position));
       if (question.id === 4) {
         if (physicalOutputOn('MC1')) sim.weight = Math.min(99, sim.weight + 0.6);
         if (physicalOutputOn('MC2')) sim.weight = Math.max(0, sim.weight - 1.1);
+        const mapping = ensurePracticeState(question.id).wiring;
+        const inputOn = (id) => isDeviceX(mapping[id] || '') && getDeviceValue(mapping[id]);
+        const setValue = Math.max(0, Number(getDeviceValue('D300') || 0));
+        const compensationRate = inputOn('LT1') ? 0.2 : inputOn('LT2') ? 0.12 : inputOn('LT3') ? 0.06 : 0;
+        const compensation = Math.round(setValue * compensationRate);
+        setDeviceValue('D301', Math.round(sim.weight * 10));
+        setDeviceValue('D302', compensation);
+        setDeviceValue('D303', Math.max(0, setValue - compensation));
       }
       if (question.id === 5) {
         if (physicalOutputOn('MC1') && !physicalOutputOn('MC2')) sim.doorOpen = Math.min(1, sim.doorOpen + 0.045);
@@ -947,6 +1039,7 @@ const COLS = 12;
     function getDeviceValue(device) {
       const d = String(device || '').toUpperCase();
       if (Object.prototype.hasOwnProperty.call(SPECIAL_M_DEFINITIONS, d)) return Boolean(state.deviceMemory.special[d]);
+      if (Object.prototype.hasOwnProperty.call(SPECIAL_D_DEFINITIONS, d)) return Number(state.deviceMemory.specialD[d] || 0);
 
       if (isDeviceX(d)) return Boolean(state.deviceMemory.X[d]);
       if (isDeviceY(d)) return Boolean(state.deviceMemory.Y[d]);
@@ -957,6 +1050,12 @@ const COLS = 12;
       const wordBit = d.match(/^D(\d+)\.([0-9A-F])$/);
       if (wordBit) return Boolean((Number(state.deviceMemory.D[`D${wordBit[1]}`] || 0) >>> parseInt(wordBit[2], 16)) & 1);
       if (/^D\d+$/.test(d)) return Number(state.deviceMemory.D[d] || 0);
+      if (/^DR\d+$/.test(d)) {
+        const index = Number(d.slice(2));
+        const low = Number(state.deviceMemory.R[`R${index}`] || 0) & 0xFFFF;
+        const high = Number(state.deviceMemory.R[`R${index + 1}`] || 0) & 0xFFFF;
+        return (high << 16) | low;
+      }
       if (/^R\d+$/.test(d)) return Number(state.deviceMemory.R[d] || 0);
       return false;
     }
@@ -964,6 +1063,7 @@ const COLS = 12;
     function setDeviceValue(device, value) {
       const d = String(device || '').toUpperCase();
       if (Object.prototype.hasOwnProperty.call(SPECIAL_M_DEFINITIONS, d)) return;
+      if (Object.prototype.hasOwnProperty.call(SPECIAL_D_DEFINITIONS, d)) return;
       if (isDeviceX(d)) state.deviceMemory.X[d] = Boolean(value);
       else if (isDeviceY(d)) state.deviceMemory.Y[d] = Boolean(value);
       else if (/^M\d+$/.test(d)) state.deviceMemory.M[d] = Boolean(value);
@@ -976,6 +1076,12 @@ const COLS = 12;
         state.deviceMemory.D[wordDevice] = value ? (current | (1 << bit)) : (current & ~(1 << bit));
       }
       else if (/^D\d+$/.test(d)) state.deviceMemory.D[d] = Number(value) || 0;
+      else if (/^DR\d+$/.test(d)) {
+        const index = Number(d.slice(2));
+        const numeric = Number(value) | 0;
+        state.deviceMemory.R[`R${index}`] = numeric & 0xFFFF;
+        state.deviceMemory.R[`R${index + 1}`] = (numeric >>> 16) & 0xFFFF;
+      }
       else if (/^R\d+$/.test(d)) state.deviceMemory.R[d] = Number(value) || 0;
       else if (/^T\d+$/.test(d)) {
         const timer = state.deviceMemory.T[d] || { preset:0, current:0, done:false };
@@ -1015,8 +1121,7 @@ const COLS = 12;
       const t = String(token || '').toUpperCase();
       if (/^K-?\d+$/.test(t)) return Number(t.slice(1));
       if (/^H[0-9A-F]+$/.test(t)) return parseInt(t.slice(1), 16);
-      if (/^D\d+$/.test(t)) return Number(state.deviceMemory.D[t] || 0);
-      if (/^R\d+$/.test(t)) return Number(state.deviceMemory.R[t] || 0);
+      if (/^(?:D|R|DR)\d+$/.test(t)) return Number(getDeviceValue(t) || 0);
       if (/^M\d+$/.test(t)) return getDeviceValue(t) ? 1 : 0;
       if (isDeviceY(t)) return getDeviceValue(t) ? 1 : 0;
       return 0;
@@ -1058,6 +1163,48 @@ const COLS = 12;
       state.deviceMemory.special.M8013 = clockPulse(1000);
       state.deviceMemory.special.M8014 = clockPulse(60000);
       state.deviceMemory.special.M8018 = true;
+
+      const now = new Date();
+      const scanDeciMs = Math.max(1, Math.round(state.simulator.scanTimeMs * 10));
+      state.deviceMemory.specialD.D8010 = scanDeciMs;
+      state.deviceMemory.specialD.D8011 = state.simulator.scanCount <= 1
+        ? scanDeciMs
+        : Math.min(Number(state.deviceMemory.specialD.D8011 || scanDeciMs), scanDeciMs);
+      state.deviceMemory.specialD.D8012 = Math.max(Number(state.deviceMemory.specialD.D8012 || 0), scanDeciMs);
+      state.deviceMemory.specialD.D8013 = now.getSeconds();
+      state.deviceMemory.specialD.D8014 = now.getMinutes();
+      state.deviceMemory.specialD.D8015 = now.getHours();
+      state.deviceMemory.specialD.D8016 = now.getDate();
+      state.deviceMemory.specialD.D8017 = now.getMonth() + 1;
+      state.deviceMemory.specialD.D8018 = now.getFullYear();
+      state.deviceMemory.specialD.D8019 = now.getDay();
+    }
+
+    function deviceMemoryHasValue(device) {
+      const d = String(device || '').toUpperCase();
+      if (Object.prototype.hasOwnProperty.call(SPECIAL_M_DEFINITIONS, d) || Object.prototype.hasOwnProperty.call(SPECIAL_D_DEFINITIONS, d)) return true;
+      if (/^DR\d+$/.test(d)) {
+        const index = Number(d.slice(2));
+        return Object.prototype.hasOwnProperty.call(state.deviceMemory.R, `R${index}`)
+          || Object.prototype.hasOwnProperty.call(state.deviceMemory.R, `R${index + 1}`);
+      }
+      const match = d.match(/^(X|Y|M|S|D|R)(?:\d+)(?:\.[0-9A-F])?$/);
+      if (!match) return false;
+      const table = state.deviceMemory[match[1]];
+      const key = d.includes('.') ? d.split('.')[0] : d;
+      return Boolean(table && Object.prototype.hasOwnProperty.call(table, key));
+    }
+
+    function initializeQuestionHmiDevices(question = activeQuestion(), preserved = {}) {
+      (question.hmiDevices || []).forEach((item) => {
+        if (Object.prototype.hasOwnProperty.call(preserved, item.device)) {
+          setDeviceValue(item.device, preserved[item.device]);
+          return;
+        }
+        if (deviceMemoryHasValue(item.device)) return;
+        if (Object.prototype.hasOwnProperty.call(item, 'default')) setDeviceValue(item.device, item.default);
+        else if (item.kind === 'bit') setDeviceValue(item.device, false);
+      });
     }
 
     function updateArithmeticFlags(result, operation, a = 0, b = 0) {
@@ -1069,7 +1216,12 @@ const COLS = 12;
     function initializeDeviceMemoryForRun() {
       const physicalInputs = state.deviceMemory.X || {};
       const retainedTimers = Object.fromEntries(Object.entries(state.deviceMemory.T || {}).filter(([device]) => isRetentiveTimer(device)));
-      state.deviceMemory = { X:physicalInputs, Y:{}, M:{}, S:{}, D:{}, R:{}, T:retainedTimers, C:{}, special:createSpecialRelayState() };
+      const retainedHmi = {};
+      (activeQuestion().hmiDevices || []).filter((item) => item.retain && deviceMemoryHasValue(item.device)).forEach((item) => {
+        retainedHmi[item.device] = getDeviceValue(item.device);
+      });
+      state.deviceMemory = { X:physicalInputs, Y:{}, M:{}, S:{}, D:{}, R:{}, T:retainedTimers, C:{}, special:createSpecialRelayState(), specialD:createSpecialRegisterState() };
+      initializeQuestionHmiDevices(activeQuestion(), retainedHmi);
       state.simulator.scanCount = 0;
       state.simulator.elapsedMs = 0;
       state.simulator.lastClockToggleMs = 0;
@@ -1119,6 +1271,8 @@ const COLS = 12;
       state.simulator.elapsedMs = 0;
       state.simulator.lastClockToggleMs = 0;
       state.deviceMemory.special = createSpecialRelayState();
+      state.deviceMemory.specialD = createSpecialRegisterState();
+      initializeQuestionHmiDevices(activeQuestion());
       refreshSpecialRelays();
       state.simulator.report = [];
       state.simulator.previousPower = {};
@@ -1259,6 +1413,7 @@ const COLS = 12;
       if (!d) return '請輸入裝置，例如 D0、M0、Y0、T0、C0、M8000';
 
       if (SPECIAL_M_DEFINITIONS[d]) return `${d}\n類型：FX3U 特殊輔助電驛\n說明：${SPECIAL_M_DEFINITIONS[d].name}\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}\n屬性：CPU 管理／唯讀監視`;
+      if (SPECIAL_D_DEFINITIONS[d]) return `${d}\n類型：FX3U 特殊資料暫存器\n說明：${SPECIAL_D_DEFINITIONS[d].name}\n目前值：${getDeviceValue(d)}\n屬性：CPU 管理／唯讀監視`;
 
       if (/^[XY]\d+$/.test(d) && !isDeviceX(d) && !isDeviceY(d)) return `${d}\n位址錯誤：X／Y 只能使用八進制數字 0～7。\n例如 X7 的下一點是 X10，Y17 的下一點是 Y20。`;
       if (isDeviceX(d)) return `${d}\n類型：輸入 X（八進制位址）\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}`;
@@ -1266,6 +1421,7 @@ const COLS = 12;
       if (/^M\d+$/.test(d)) return `${d}\n類型：內部輔助 M\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}`;
       if (/^S\d+$/.test(d)) return `${d}\n類型：步進 S\n目前值：${getDeviceValue(d) ? 'ON' : 'OFF'}`;
       if (/^D\d+$/.test(d)) return `${d}\n類型：資料暫存器 D\n目前值：${readWordValue(d)}`;
+      if (/^DR\d+$/.test(d)) return `${d}\n類型：雙字檔案暫存器 DR\n目前值：${readWordValue(d)}`;
       if (/^R\d+$/.test(d)) return `${d}\n類型：檔案暫存器 R\n目前值：${readWordValue(d)}`;
 
       if (/^T\d+$/.test(d)) {
@@ -1303,7 +1459,7 @@ const COLS = 12;
     function writeWatchedDevice() {
       const d = getWatchedDeviceName();
       const raw = dom.deviceValueInput?.value || '';
-      if (/^(D|R)\d+$/.test(d)) {
+      if (/^(?:D|R|DR)\d+$/.test(d) && !SPECIAL_D_DEFINITIONS[d]) {
         setDeviceValue(d, Number(raw) || 0);
       } else if (isDeviceX(d) || isDeviceY(d) || /^(M|S)\d+$/.test(d)) {
         setDeviceValue(d, raw === '1' || raw.toUpperCase() === 'ON' || raw.toUpperCase() === 'TRUE');
@@ -1312,6 +1468,86 @@ const COLS = 12;
         return;
       }
       renderDeviceWatchPanel();
+    }
+
+    function formatMonitorValue(device, kind = 'word') {
+      const value = getDeviceValue(device);
+      return kind === 'bit' ? (value ? 'ON' : 'OFF') : String(Number(value) || 0);
+    }
+
+    function hmiDeviceMarkup(item) {
+      const isBit = item.kind === 'bit';
+      const value = getDeviceValue(item.device);
+      const writable = item.access !== 'read';
+      let control = `<b class="device-monitor-value">${formatMonitorValue(item.device, item.kind)}</b>`;
+      if (writable && isBit) {
+        const command = item.control === 'momentary' ? 'pulse' : 'toggle';
+        control = `<button class="hmi-device-button" data-hmi-command="${command}" data-hmi-device="${item.device}">${command === 'pulse' ? '按下' : (value ? '關閉' : '開啟')}</button>`;
+      } else if (writable) {
+        control = `<div class="hmi-word-control"><input type="number" value="${Number(value) || 0}" data-hmi-value-device="${item.device}" aria-label="${item.label}"><button data-hmi-command="write" data-hmi-device="${item.device}">寫入</button></div>`;
+      }
+      return `<div class="device-monitor-row ${isBit && value ? 'on' : ''}" data-monitor-device="${item.device}">
+        <span class="device-monitor-led"></span>
+        <div><strong>${item.device}</strong><small>${item.label}</small><em>${item.group || ''} · ${writable ? 'HMI → PLC' : 'PLC → HMI'}</em></div>
+        ${control}
+      </div>`;
+    }
+
+    function specialDeviceMarkup(device) {
+      const definition = SPECIAL_M_DEFINITIONS[device] || SPECIAL_D_DEFINITIONS[device];
+      const isBit = Boolean(SPECIAL_M_DEFINITIONS[device]);
+      const value = getDeviceValue(device);
+      return `<div class="device-monitor-row special ${isBit && value ? 'on' : ''}" data-monitor-device="${device}">
+        <span class="device-monitor-led"></span>
+        <div><strong>${device}</strong><small>${definition?.name || 'FX3U 特殊裝置'}</small><em>CPU 管理 · 唯讀</em></div>
+        <b class="device-monitor-value">${formatMonitorValue(device, isBit ? 'bit' : 'word')}</b>
+      </div>`;
+    }
+
+    function questionDeviceMonitorMarkup(question) {
+      const hmiDevices = question.hmiDevices || [];
+      if (!hmiDevices.length) return '';
+      initializeQuestionHmiDevices(question);
+      const programSpecialDevices = Object.values(state.components).flatMap((component) => [component.device, ...(component.args || [])])
+        .map((device) => String(device || '').toUpperCase())
+        .filter((device) => SPECIAL_M_DEFINITIONS[device] || SPECIAL_D_DEFINITIONS[device]);
+      const specialDevices = [...new Set([...(question.specialDevices || []), ...programSpecialDevices])];
+      return `<section class="mini-panel hmi-monitor-panel">
+        <div class="monitor-panel-heading"><h3>本題 HMI／特殊裝置同步</h3><span>LIVE</span></div>
+        <p class="hmi-register-note">${question.hmiRegisterNote || ''}</p>
+        <h4>人機介面暫存器與接點</h4>
+        <div class="device-monitor-grid">${hmiDevices.map(hmiDeviceMarkup).join('')}</div>
+        <h4>FX3U 特殊電驛／暫存器</h4>
+        <div class="device-monitor-grid">${specialDevices.map(specialDeviceMarkup).join('')}</div>
+      </section>`;
+    }
+
+    function operateHmiDevice(target) {
+      const device = String(target.dataset.hmiDevice || '').toUpperCase();
+      const command = target.dataset.hmiCommand;
+      const item = (activeQuestion().hmiDevices || []).find((candidate) => candidate.device === device);
+      if (!item || item.access === 'read') return;
+
+      if (command === 'write') {
+        const input = target.closest('.device-monitor-row')?.querySelector('[data-hmi-value-device]');
+        setDeviceValue(device, Number(input?.value) || 0);
+      } else if (command === 'toggle') {
+        setDeviceValue(device, !getDeviceValue(device));
+      } else if (command === 'pulse') {
+        setDeviceValue(device, true);
+      }
+
+      if (state.compile.passed) runOneScan();
+      persistPracticeState();
+      render();
+
+      if (command === 'pulse') {
+        window.setTimeout(() => {
+          setDeviceValue(device, false);
+          if (state.compile.passed) runOneScan();
+          if (state.portalView === 'practice') render();
+        }, 220);
+      }
     }
 
     // ===== Core Editor Logic =====
@@ -1435,7 +1671,7 @@ const COLS = 12;
 
     function isLabelToken(token) {
       return /^[A-Z_][A-Z0-9_]*$/.test(token)
-        && !/^(?:X|Y|M|S|T|C|D|R|V|Z|P|I|N|TC)\d+$/.test(token)
+        && !/^(?:X|Y|M|S|T|C|D|R|DR|V|Z|P|I|N|TC)\d+$/.test(token)
         && !/^K-?\d+$/.test(token)
         && !/^H[0-9A-F]+$/.test(token);
     }
@@ -1452,6 +1688,7 @@ const COLS = 12;
     function isDeviceY(v) { return /^Y[0-7]+$/.test(v); }
     function isDeviceM(v) { const match=String(v || '').match(/^M(\d+)$/); if (!match) return false; const n=Number(match[1]); return (n >= 0 && n <= 7679) || (n >= 8000 && n <= 8511); }
     function isDeviceD(v) { return /^D\d+$/.test(v); }
+    function isDeviceDR(v) { return /^DR\d+$/.test(v); }
     function isDeviceT(v) { const match=String(v || '').match(/^T(\d+)$/); return Boolean(match) && Number(match[1]) <= 511; }
     function isDeviceC(v) { const match=String(v || '').match(/^C(\d+)$/); return Boolean(match) && Number(match[1]) <= 255; }
     function isDeviceS(v) { const match=String(v || '').match(/^S(\d+)$/); return Boolean(match) && Number(match[1]) <= 4095; }
@@ -1492,11 +1729,11 @@ const COLS = 12;
       }
       if (accepted.includes('CONTACT') && isContactDevice(token)) return { ok: true, value: token, source: info };
       if (accepted.includes('COIL') && isCoilDevice(token)) return { ok: true, value: token, source: info };
-      if (accepted.includes('D') && isDeviceD(token)) return { ok: true, value: token, source: info };
-      if (accepted.includes('R') && isDeviceR(token)) return { ok: true, value: token, source: info };
+      if (accepted.includes('D') && (isDeviceD(token) || isDeviceDR(token))) return { ok: true, value: token, source: info };
+      if (accepted.includes('R') && (isDeviceR(token) || isDeviceDR(token))) return { ok: true, value: token, source: info };
       if (accepted.includes('K') && isConstK(token)) return { ok: true, value: token, source: info };
       if (accepted.includes('H') && isConstH(token)) return { ok: true, value: token, source: info };
-      if (accepted.includes('WORD') && (isDeviceD(token) || isDeviceR(token) || isDeviceV(token) || isDeviceZ(token) || isDeviceM(token) || isDeviceY(token) || isConstK(token) || isConstH(token))) return { ok: true, value: token, source: info };
+      if (accepted.includes('WORD') && (isDeviceD(token) || isDeviceDR(token) || isDeviceR(token) || isDeviceV(token) || isDeviceZ(token) || isDeviceM(token) || isDeviceY(token) || isConstK(token) || isConstH(token))) return { ok: true, value: token, source: info };
       if (accepted.includes('TC') && isDeviceTC(token)) return { ok: true, value: token, source: info };
       return { ok: false, error: `參數格式錯誤：${rawToken.toUpperCase()} 不符合 ${accepted.join('/')}。`, code: 'E302', suggestion: '請改用合法的裝置或常數格式。' };
     }
@@ -1538,7 +1775,7 @@ const COLS = 12;
       if (/^E-?\d+(?:\.\d+)?$/.test(token)) return { ok:true, value:token };
       if (/^(?:K-?\d+|H[0-9A-F]+)$/.test(token)) return { ok:true, value:token };
       if (/^K[1-8](?:X[0-7]+|Y[0-7]+|M\d+|S\d+)$/.test(token)) return { ok:true, value:token };
-      if (/^(?:X[0-7]+|Y[0-7]+|M\d+|S\d+|T\d+|C\d+|D\d+|R\d+|V\d+|Z\d+|P\d+|I\d+|N\d+)(?:[VZ]\d+)?(?:\.[0-9A-F])?$/.test(token)) return { ok:true, value:token };
+      if (/^(?:X[0-7]+|Y[0-7]+|M\d+|S\d+|T\d+|C\d+|D\d+|R\d+|DR\d+|V\d+|Z\d+|P\d+|I\d+|N\d+)(?:[VZ]\d+)?(?:\.[0-9A-F])?$/.test(token)) return { ok:true, value:token };
       if (/^U[0-9A-F]+\\G\d+$/.test(token)) return { ok:true, value:token };
       if (/^@[DR]\d+$/.test(token)) return { ok:true, value:token };
       if (/^[A-Z_$][A-Z0-9_.$:+\-]*$/.test(token)) return { ok:true, value:token };
@@ -1598,7 +1835,7 @@ const COLS = 12;
 
       if (first === 'STL') {
         if (rest.length !== 1 || !isDeviceS(rest[0])) return { error:'STL 需要 1 個步進狀態裝置，例如 STL S0。', code:'E333', suggestion:'請使用 STL S0；步進狀態只能使用 S 裝置。' };
-        return { kind:'CONTACT', display:`STL ${rest[0]}`, device:rest[0], instruction:'STL', args:[rest[0]], span:1, output:false, polarity:'NORMAL', step:true, simulated:true };
+        return { kind:'CONTACT', display:`STL ${rest[0]}`, device:rest[0], instruction:'STL', args:[rest[0]], span:2, output:false, polarity:'NORMAL', step:true, simulated:true };
       }
 
       if (first === 'RET') {
@@ -1700,7 +1937,7 @@ const COLS = 12;
         if (isSpecialM(op.value)) return { error:`${op.value} 是 CPU 管理的特殊輔助電驛，不能作為 ${first} 的寫入目標。`, code:'E215', suggestion:'M8000～M8511 請作為監視接點使用；輸出請使用一般 M、S 或 Y。' };
         if (isDeviceX(op.value) || isDeviceD(op.value)) return { error: `${first} 參數不合法：${op.value}。`, code: 'E213', suggestion: first === 'RST' ? 'RST 不可接 X 或 D。' : `${first} 只能接 Y/M/S 裝置。` };
         if (first !== 'RST' && (isDeviceT(op.value) || isDeviceC(op.value))) return { error:`${first} 不可直接寫入 ${op.value}。`, code:'E216', suggestion:'T／C 請使用 OUT T0 K50、OUT C0 K10；復歸則使用 RST T0／RST C0。' };
-        return { kind: 'COIL', display: `${first} ${op.value}`, device: op.value, instruction: first, args: [op.value], span: 1, output: true, polarity: 'NORMAL' };
+        return { kind: 'COIL', display: first === 'OUT' ? op.value : `${first} ${op.value}`, device: op.value, instruction: first, args: [op.value], span: first === 'SET' ? 2 : 1, output: true, alignRight:true, polarity: 'NORMAL' };
       }
 
       if (first === 'MOV' || first === 'MOVP' || first === 'DMOV') {
@@ -2052,7 +2289,10 @@ const COLS = 12;
     }
 
     function resolveStartCol(parsed, col) {
-      if (parsed.kind === 'COIL') return COLS - 1;
+      if (parsed.kind === 'COIL') {
+        const coilSpan = Math.max(1, parsed.span || 1);
+        return Math.max(FIRST_EDIT_COL, LAST_EDIT_COL - coilSpan + 1);
+      }
       if (parsed.alignRight) {
         const spanRight = Math.max(1, parsed.span || 1);
         return Math.max(FIRST_EDIT_COL, LAST_EDIT_COL - spanRight + 1);
@@ -2087,7 +2327,7 @@ const COLS = 12;
         if (!cell) continue;
         if (component.kind === 'COIL') {
           cell.wires.left = true;
-          cell.wires.right = false;
+          cell.wires.right = c < component.endCol;
         } else {
           cell.wires.left = true;
           cell.wires.right = true;
@@ -3667,7 +3907,14 @@ const COLS = 12;
 
           const component = componentFromCell(cell);
           if (component && component.kind !== 'END') {
-            if (component.kind === 'CONTACT') {
+            if (component.kind === 'CONTACT' && component.instruction === 'STL') {
+              const slot = document.createElement('div');
+              slot.className = 'block-slot step-slot';
+              if (cell.partIndex === 0) slot.classList.add('start');
+              if (cell.partIndex === component.span - 1) slot.classList.add('end');
+              slot.textContent = component.slots[cell.partIndex] || '';
+              div.appendChild(slot);
+            } else if (component.kind === 'CONTACT') {
               const symbol = document.createElement('div');
               symbol.className = 'symbol';
               const chip = document.createElement('div');
@@ -3681,15 +3928,22 @@ const COLS = 12;
               symbol.appendChild(chip);
               const text = document.createElement('div');
               text.className = 'instruction-label';
-              text.textContent = component.instruction === 'STL' ? component.display : component.device;
+              text.textContent = component.device;
               symbol.appendChild(text);
               div.appendChild(symbol);
+            } else if (component.kind === 'COIL' && component.span > 1) {
+              const slot = document.createElement('div');
+              slot.className = 'block-slot instruction-output-slot';
+              if (cell.partIndex === 0) slot.classList.add('start');
+              if (cell.partIndex === component.span - 1) slot.classList.add('end');
+              slot.textContent = component.slots[cell.partIndex] || '';
+              div.appendChild(slot);
             } else if (component.kind === 'COIL') {
               const symbol = document.createElement('div');
               symbol.className = 'symbol';
               const chip = document.createElement('div');
               chip.className = `coil-chip${component.instruction !== 'OUT' ? ' instruction-coil' : ''}`;
-              chip.textContent = component.instruction === 'OUT' && component.display === component.device ? component.device : component.display;
+              chip.textContent = component.instruction === 'OUT' ? component.device : component.display;
               symbol.appendChild(chip);
               div.appendChild(symbol);
             } else if (component.kind === 'FUNCTION' || component.kind === 'COMPARE') {
@@ -3736,6 +3990,7 @@ const COLS = 12;
       infoPanel.innerHTML = `
         <div class="right-stack">
           <section class="mini-panel io-address-panel"><h3>本題元件與使用者 PLC 接點</h3><div class="io-table-heading"><span>元件名稱</span><span>PLC I/O</span></div><div class="io-live-grid">${questionIoItems(q).map(item => `<div class="io-live ${item.io} ${currentMapping[item.id] && getDeviceValue(currentMapping[item.id]) ? 'on' : ''}" data-device-toggle="${currentMapping[item.id] || ''}" title="${item.label}"><div><strong>${item.id}</strong><small>${item.label}</small></div><span>${currentMapping[item.id] || '未配線'}</span></div>`).join('')}</div></section>
+          ${questionDeviceMonitorMarkup(q)}
         </div>
         <div id="compileSummary" class="compile-summary"></div>
         <div class="il-heading"><strong>編譯後助記碼</strong><small>錯誤會在按下「編譯」後集中顯示</small></div>
@@ -3876,6 +4131,9 @@ const COLS = 12;
       const wiringTarget = event.target.closest('.terminal, .plc-terminal');
       const deviceToggleTarget = event.target.closest('[data-device-toggle]');
       const simulationInputTarget = event.target.closest('[data-sim-input-id]');
+      const hmiActionTarget = event.target.closest('[data-hmi-command]');
+
+      if (hmiActionTarget) { operateHmiDevice(hmiActionTarget); return; }
 
       if (actionTarget) {
         const action = actionTarget.dataset.action;

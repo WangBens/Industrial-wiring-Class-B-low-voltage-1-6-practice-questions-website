@@ -553,3 +553,42 @@
       .machine-scene { justify-content:start; overflow:auto; }
       .info-panel .io-live-grid { grid-template-columns:1fr; }
     }
+
+    /* Ladder editor: full-width editor plus a non-overlapping live PLC/HMI sidebar. */
+    .workspace.ladder-workspace { grid-template-columns:minmax(720px,1fr) minmax(360px,430px); align-items:start; }
+    .ladder-workspace .editor-area { min-width:0; }
+    .ladder-workspace .info-panel { position:sticky; top:8px; max-height:calc(100dvh - 16px); overflow:auto; scrollbar-gutter:stable; }
+    .ladder-workspace .info-panel .io-live-grid { grid-template-columns:1fr; }
+
+    .step-slot { border-color:#5d48a8; background:#f2efff; color:#34236f; font-size:13px; font-weight:900; }
+    .instruction-output-slot { border-color:#1f5878; background:#edf7fc; color:#153f58; font-size:13px; font-weight:900; }
+    .monitor-panel-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .monitor-panel-heading h3 { margin:0; }
+    .monitor-panel-heading span { border-radius:999px; padding:3px 7px; background:#d9f8f1; color:#087466; font:900 9px/1 Consolas,monospace; }
+    .hmi-register-note { margin:8px 0 10px; border-left:3px solid #7b61cf; background:#f5f2ff; padding:7px 8px; color:#56477f; font-size:10px; line-height:1.45; }
+    .hmi-monitor-panel h4 { margin:12px 0 6px; color:#436075; font-size:11px; }
+    .device-monitor-grid { display:grid; gap:5px; }
+    .device-monitor-row { display:grid; grid-template-columns:9px minmax(0,1fr) auto; align-items:center; gap:8px; min-height:58px; border:1px solid #d5dde3; border-left:4px solid #7a5fc8; background:#faf9ff; padding:7px 8px; }
+    .device-monitor-row.special { border-left-color:#1c8c7d; background:#f4fbfa; }
+    .device-monitor-led { width:9px; height:9px; border-radius:50%; background:#a2adb5; }
+    .device-monitor-row.on .device-monitor-led { background:#16b99f; box-shadow:0 0 6px #16b99f; }
+    .device-monitor-row strong { display:block; color:#1b3650; font:900 15px/1 Consolas,monospace; }
+    .device-monitor-row small,.device-monitor-row em { display:block; margin-top:3px; color:#657989; font-size:10px; font-style:normal; line-height:1.25; }
+    .device-monitor-row em { color:#8a77b6; font-size:9px; }
+    .device-monitor-value { min-width:62px; border-radius:4px; padding:6px 7px; background:#e8eef2; color:#164c6d; text-align:center; font:900 13px/1 Consolas,monospace; }
+    .hmi-device-button,.hmi-word-control button { min-height:32px; border:1px solid #6f5ab0; border-radius:4px; background:#735dc0; color:#fff; padding:5px 8px; cursor:pointer; font-size:11px; font-weight:800; }
+    .hmi-device-button:hover,.hmi-word-control button:hover { background:#59459d; }
+    .hmi-word-control { display:flex; align-items:stretch; gap:4px; }
+    .hmi-word-control input { width:82px; min-width:0; border:1px solid #aeb9c3; border-radius:4px; padding:5px 6px; background:#fff; color:#1c3548; font:800 12px/1 Consolas,monospace; }
+
+    @media (max-width:1199px) {
+      .workspace.ladder-workspace { grid-template-columns:minmax(0,1fr); }
+      .ladder-workspace .info-panel { position:static; max-height:none; overflow:visible; }
+      .ladder-workspace .info-panel .io-live-grid { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+    }
+
+    @media (max-width:600px) {
+      .ladder-workspace .info-panel .io-live-grid { grid-template-columns:1fr; }
+      .device-monitor-row { grid-template-columns:9px minmax(0,1fr); }
+      .device-monitor-value,.hmi-device-button,.hmi-word-control { grid-column:2; justify-self:start; }
+    }
